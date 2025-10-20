@@ -634,8 +634,8 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
         width_multiplier=config.width_multiplier,
         include_top=True,
         input_projection_channels=None,
+        dropout_rate=config.dropout_rate,
     )
-    model = model.replace(dropout_rate=config.dropout_rate)  # type: ignore[arg-type]
 
     state = create_train_state(rng, model, config, train_schedule)
     restored_state = maybe_restore_checkpoint(config, state)

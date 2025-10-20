@@ -401,6 +401,7 @@ def create_resnet(
     frozen_stages: Tuple[int, ...] = (),
     freeze_stem: bool = False,
     freeze_classifier: bool = False,
+    dropout_rate: float = 0.0,
 ) -> ResNet:
     """Factory returning a configured ResNet model.
 
@@ -415,6 +416,7 @@ def create_resnet(
         frozen_stages: Residual stages to freeze during fine-tuning.
         freeze_stem: Whether to freeze the stem layers.
         freeze_classifier: Whether to freeze the classifier layer.
+        dropout_rate: Dropout probability applied before the classifier head.
 
     Returns:
         ResNet: Configured Flax ResNet module.
@@ -444,7 +446,11 @@ def create_resnet(
         freeze_stem=freeze_stem,
         freeze_classifier=freeze_classifier,
     )
-    return ResNet(config=config, include_top=include_top)
+    return ResNet(
+        config=config,
+        include_top=include_top,
+        dropout_rate=dropout_rate,
+    )
 
 
 def build_finetune_mask(
