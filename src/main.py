@@ -96,6 +96,17 @@ class RuntimeAugmentationModel(BaseModel):
     @field_validator("scale_range")
     @classmethod
     def validate_scale_range(cls, value: Tuple[float, float]) -> Tuple[float, float]:
+        """Validate that the scale range is positive and ordered.
+
+        Args:
+            value: Tuple containing the minimum and maximum scale factors.
+
+        Returns:
+            Tuple[float, float]: Sanitized scale range.
+
+        Raises:
+            ValueError: If the tuple is not length two, non-positive, or inverted.
+        """
         if len(value) != 2:
             raise ValueError("scale_range must contain two values (min, max).")
         lo, hi = value
@@ -153,6 +164,17 @@ class RuntimeTrainingModel(BaseModel):
     @field_validator("frozen_stages")
     @classmethod
     def validate_stages(cls, value: Tuple[int, ...]) -> Tuple[int, ...]:
+        """Ensure that frozen stage indices are positive.
+
+        Args:
+            value: Tuple of stage indices requested for freezing.
+
+        Returns:
+            Tuple[int, ...]: The validated stage tuple.
+
+        Raises:
+            ValueError: If any value is less than one.
+        """
         if any(stage < 1 for stage in value):
             raise ValueError("frozen_stages must contain positive integers.")
         return value

@@ -20,6 +20,7 @@ from src.train import TrainingConfig
 
 
 def test_load_config_success_and_errors(tmp_path: Path) -> None:
+    """Test config loading success, missing files, and parsing errors."""
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps({"key": "value"}))
     assert main.load_config(config_path) == {"key": "value"}
@@ -32,6 +33,7 @@ def test_load_config_success_and_errors(tmp_path: Path) -> None:
 
 
 def test_load_config_none_returns_empty_dict() -> None:
+    """Test that passing None returns an empty configuration."""
     assert main.load_config(None) == {}
 
 
@@ -44,17 +46,20 @@ def test_load_config_none_returns_empty_dict() -> None:
     ],
 )
 def test_runtime_augmentation_model_validation_errors(scale_range) -> None:
+    """Test that invalid augmentation scale ranges raise validation errors."""
     with pytest.raises(ValidationError):
         main.RuntimeAugmentationModel(scale_range=scale_range)
 
 
 def test_validate_scale_range_direct_calls() -> None:
+    """Test the scale range validator when invoked directly."""
     with pytest.raises(ValueError):
         main.RuntimeAugmentationModel.validate_scale_range((0.8,))
     assert main.RuntimeAugmentationModel.validate_scale_range((0.8, 1.2)) == (0.8, 1.2)
 
 
 def test_runtime_training_model_rejects_invalid_frozen_stage(tmp_path: Path) -> None:
+    """Test that zero-stage entries are rejected by the training schema."""
     payload = {
         "data": {"data_dir": tmp_path},
         "frozen_stages": (0,),
@@ -64,6 +69,7 @@ def test_runtime_training_model_rejects_invalid_frozen_stage(tmp_path: Path) -> 
 
 
 def test_runtime_training_model_accepts_valid_frozen_stages(tmp_path: Path) -> None:
+    """Test that positive frozen stages are accepted."""
     payload = {
         "data": {"data_dir": tmp_path},
         "frozen_stages": (1, 2),
@@ -73,6 +79,7 @@ def test_runtime_training_model_accepts_valid_frozen_stages(tmp_path: Path) -> N
 
 
 def test_build_dataclass_converts_paths(tmp_path: Path) -> None:
+    """Test conversion to dataclasses including nested path fields."""
     payload = {
         "data_dir": str(tmp_path),
         "stats_cache_path": str(tmp_path / "stats.json"),
@@ -91,6 +98,7 @@ def test_build_dataclass_converts_paths(tmp_path: Path) -> None:
 
 
 def test_prepare_environment_sets_seeds() -> None:
+    """Test that environment preparation resets PRNG sequences."""
     main.prepare_environment(1234)
     values = [random.randint(0, 1000) for _ in range(3)]
     np_values = np.random.rand(3)
@@ -100,6 +108,7 @@ def test_prepare_environment_sets_seeds() -> None:
 
 
 def test_to_serializable_handles_complex_types(tmp_path: Path) -> None:
+    """Test conversion of config, paths, and arrays into JSON-compatible types."""
     config = TrainingConfig(
         data=DataModuleConfig(data_dir=tmp_path),
         output_dir=tmp_path,
@@ -110,6 +119,7 @@ def test_to_serializable_handles_complex_types(tmp_path: Path) -> None:
 
 
 def test_persist_artifacts_and_summarize(tmp_path: Path) -> None:
+    """Test artifact persistence and summary output creation."""
     config = TrainingConfig(
         data=DataModuleConfig(data_dir=tmp_path, batch_size=2),
         output_dir=tmp_path / "artifacts",
@@ -123,6 +133,7 @@ def test_persist_artifacts_and_summarize(tmp_path: Path) -> None:
 
 
 def test_resolve_configs_and_main_entry(monkeypatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Test CLI resolution and main execution with monkeypatched dependencies."""
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     config_payload = {
@@ -160,6 +171,7 @@ def test_resolve_configs_and_main_entry(monkeypatch, tmp_path: Path, capsys: pyt
 
 
 def test_resolve_configs_applies_overrides_and_augmentation(tmp_path: Path) -> None:
+    """Test CLI overrides for resume, epochs, and augmentation payloads."""
     dataset_dir = tmp_path / "data"
     dataset_dir.mkdir()
     config_payload = {
@@ -189,6 +201,7 @@ def test_resolve_configs_applies_overrides_and_augmentation(tmp_path: Path) -> N
 
 
 def test_to_serializable_numpy_and_jax_scalars() -> None:
+    """Test serialization for numpy and jax scalar types."""
     payload: Dict[str, Any] = {
         "numpy_float": np.float32(1.25),
         "numpy_int": np.int32(7),
@@ -205,6 +218,7 @@ def test_to_serializable_numpy_and_jax_scalars() -> None:
 
 
 def test_to_serializable_handles_jax_generic(monkeypatch) -> None:
+    """Test serialization when numpy scalar fallbacks are monkeypatched."""
     monkeypatch.setattr(main.np, "floating", (), raising=False)
     monkeypatch.setattr(main.np, "integer", (), raising=False)
     value = np.float32(2.5)
@@ -212,6 +226,7 @@ def test_to_serializable_handles_jax_generic(monkeypatch) -> None:
 
 
 def test_summarize_includes_test_accuracy() -> None:
+    """Test that optional test accuracy is included in summaries."""
     metrics = {
         "train_loss": 0.1,
         "train_accuracy": 0.9,
@@ -224,6 +239,7 @@ def test_summarize_includes_test_accuracy() -> None:
 
 
 def test_main_entrypoint_executes(monkeypatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Test that the CLI entrypoint executes end-to-end with faked training."""
     config_path = tmp_path / "cfg.json"
     config_path.write_text(json.dumps({"data": {"data_dir": str(tmp_path)}}))
     output_dir = tmp_path / "runs"
@@ -254,4 +270,3 @@ def test_main_entrypoint_executes(monkeypatch, tmp_path: Path, capsys: pytest.Ca
     captured = capsys.readouterr()
     assert "Final train loss" in captured.out or captured.out == ""
     assert "config" in calls
-

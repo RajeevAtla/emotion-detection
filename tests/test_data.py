@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Sequence, Tuple
-
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -15,7 +13,6 @@ from src.data import (
     AugmentationConfig,
     DataModuleConfig,
     EmotionDataModule,
-    DatasetStats,
     apply_augmentations,
     compute_class_distribution,
     compute_class_weights,
@@ -27,12 +24,14 @@ from src.data import (
 
 
 def _write_image(path: Path, value: int) -> None:
+    """Write a synthetic grayscale image with a constant pixel value."""
     arr = np.full((48, 48), value, dtype=np.uint8)
     Image.fromarray(arr).save(path)
 
 
 @pytest.fixture
 def tiny_dataset(tmp_path: Path) -> Path:
+    """Create a minimal dataset hierarchy for use across data tests."""
     dataset_root = tmp_path / "dataset"
     for split in ("train", "test"):
         for idx, class_name in enumerate(CLASS_NAMES):
@@ -45,6 +44,7 @@ def tiny_dataset(tmp_path: Path) -> Path:
 
 
 def test_emotion_data_module_end_to_end(tiny_dataset: Path) -> None:
+    """Test that the data module sets up splits, statistics, and batches."""
     config = DataModuleConfig(
         data_dir=tiny_dataset,
         batch_size=4,
@@ -81,6 +81,7 @@ def test_emotion_data_module_end_to_end(tiny_dataset: Path) -> None:
 
 
 def test_dataset_statistics_cache(tmp_path: Path, tiny_dataset: Path) -> None:
+    """Test that dataset statistics are cached and reused."""
     samples = _scan_split(tiny_dataset, split="train")
     cache_path = tmp_path / "stats.json"
     stats = compute_dataset_statistics(samples, cache_path=cache_path, force=True)
@@ -90,7 +91,7 @@ def test_dataset_statistics_cache(tmp_path: Path, tiny_dataset: Path) -> None:
 
 
 def test_stratified_split_edge_cases() -> None:
-    sample = [("a", 0)]
+    """Test that stratified split handles minimal and multiple samples."""
     indices = [0]
     one_sample_train, one_sample_val = stratified_split(
         [type("S", (), {"label": 0})()], val_ratio=0.5, seed=0
@@ -104,6 +105,7 @@ def test_stratified_split_edge_cases() -> None:
 
 
 def test_class_distribution_and_weights(tiny_dataset: Path) -> None:
+    """Test class distribution reporting and normalized weight computation."""
     samples = _scan_split(tiny_dataset, split="train")
     distribution = compute_class_distribution(samples)
     assert distribution.keys() == set(CLASS_NAMES)
@@ -113,6 +115,7 @@ def test_class_distribution_and_weights(tiny_dataset: Path) -> None:
 
 
 def test_augmentation_and_normalization() -> None:
+    """Test augmentation pipeline and normalization helpers."""
     config = AugmentationConfig(
         horizontal_flip_prob=1.0,
         rotation_degrees=5.0,
@@ -129,6 +132,7 @@ def test_augmentation_and_normalization() -> None:
 
 
 def test_scan_split_handles_unknown_class(tmp_path: Path) -> None:
+    """Test that unknown class directories raise a ValueError."""
     split_dir = tmp_path / "train" / "unknown"
     split_dir.mkdir(parents=True)
     _write_image(split_dir / "img.png", 0)
@@ -137,6 +141,7 @@ def test_scan_split_handles_unknown_class(tmp_path: Path) -> None:
 
 
 def test_stratified_split_zero_ratio() -> None:
+    """Test that a zero validation ratio returns all train indices."""
     samples = [type("S", (), {"label": 0})() for _ in range(5)]
     train_idx, val_idx = stratified_split(samples, val_ratio=0.0, seed=0)
     assert len(train_idx) == 5
@@ -144,6 +149,7 @@ def test_stratified_split_zero_ratio() -> None:
 
 
 def test_stats_and_class_weights_require_setup(tmp_path: Path) -> None:
+    """Test that accessing stats or weights before setup raises an error."""
     config = DataModuleConfig(data_dir=tmp_path)
     module = EmotionDataModule(config)
     with pytest.raises(RuntimeError):
@@ -153,6 +159,7 @@ def test_stats_and_class_weights_require_setup(tmp_path: Path) -> None:
 
 
 def test_setup_skips_stat_recompute_when_provided(monkeypatch, tiny_dataset: Path) -> None:
+    """Test that provided statistics skip recomputation."""
     config = DataModuleConfig(data_dir=tiny_dataset, mean=0.25, std=0.5)
     module = EmotionDataModule(config)
 
@@ -168,6 +175,7 @@ def test_setup_skips_stat_recompute_when_provided(monkeypatch, tiny_dataset: Pat
 
 
 def test_iter_batches_empty_returns_no_batches(tmp_path: Path) -> None:
+    """Test that empty sample iterators yield no batches."""
     config = DataModuleConfig(data_dir=tmp_path)
     module = EmotionDataModule(config)
     batches = list(
@@ -184,11 +192,13 @@ def test_iter_batches_empty_returns_no_batches(tmp_path: Path) -> None:
 
 
 def test_scan_split_missing_directory(tmp_path: Path) -> None:
+    """Test that missing directories trigger a FileNotFoundError."""
     with pytest.raises(FileNotFoundError):
         _scan_split(tmp_path, split="train")
 
 
 def test_scan_split_filters_non_dirs_and_extensions(tmp_path: Path) -> None:
+    """Test that non-directory entries and unmatched extensions are ignored."""
     train_dir = tmp_path / "train"
     train_dir.mkdir()
     (train_dir / "readme.txt").write_text("ignore me")
@@ -203,11 +213,13 @@ def test_scan_split_filters_non_dirs_and_extensions(tmp_path: Path) -> None:
 
 
 def test_stratified_split_empty_samples_returns_empty() -> None:
+    """Test that an empty sample list returns empty splits."""
     train_idx, val_idx = stratified_split([], val_ratio=0.2, seed=0)
     assert train_idx == []
     assert val_idx == []
 
 
 def test_normalize_image_without_stats_returns_input() -> None:
+    """Test that normalization bypasses transformation when stats missing."""
     image = np.linspace(0, 1, num=16, dtype=np.float32).reshape(4, 4, 1)
     assert np.allclose(normalize_image(image, mean=None, std=0.5), image)

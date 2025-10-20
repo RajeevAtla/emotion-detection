@@ -79,3 +79,24 @@ Next Test Enhancements
 - [x] Add regression tests for data augmentation edge cases (extreme scales, disabled augment, cached statistics) to cover remaining branches.
 - [x] Track coverage progress via `pytest-cov` in CI, gating the suite on 100% statement coverage.
 
+Docstring & Style Compliance
+----------------------------
+
+- [x] Ensure every module under `src/` and `tests/` has a Google-style docstring.
+- [x] Add Google-style docstrings to all public functions, fixtures, and methods across the codebase to improve readability and lint compliance.
+
+GitHub Actions CI
+-----------------
+
+- [x] Install dependencies with `uv sync` to guarantee a reproducible environment.
+- [x] Run `uv run ruff check` to enforce lint rules.
+- [x] Run `uv run ty` to exercise the static type checks.
+- [x] Run `uv run pytest --cov=src` to validate the suite and enforce coverage.
+
+Further Improvements
+--------------------
+
+- Introduce automated model benchmarking scripts to compare architectures on validation metrics.
+- Add dataset versioning hooks (e.g., DVC or git-lfs pointers) to manage future data updates.
+- Provide rich experiment dashboards (Weights & Biases or equivalent) for long-running training jobs.
+- Investigate lightweight distillation models to accelerate inference on edge devices.

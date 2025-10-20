@@ -17,6 +17,7 @@ from src import model
 
 
 def test_resnet_config_presets_and_overrides() -> None:
+    """Test configuration presets and invalid depth handling."""
     cfg = model.resnet_config(18, num_classes=5)
     assert cfg.depth == 18
     assert cfg.num_classes == 5
@@ -25,6 +26,7 @@ def test_resnet_config_presets_and_overrides() -> None:
 
 
 def test_basic_and_bottleneck_blocks() -> None:
+    """Test initialization and forward pass across block variants."""
     key = jax.random.PRNGKey(0)
     basic = model.BasicBlock(features=32, strides=(2, 2), use_projection=True)
     x = jnp.ones((1, 32, 32, 32))
@@ -40,6 +42,7 @@ def test_basic_and_bottleneck_blocks() -> None:
 
 
 def test_create_resnet_and_forward_features() -> None:
+    """Test feature dictionary outputs when requesting intermediate tensors."""
     resnet = model.create_resnet(depth=18, num_classes=3, include_top=False)
     variables = resnet.init(jax.random.PRNGKey(1), jnp.ones((1, 48, 48, 1)), train=False)
     logits, features = resnet.apply(variables, jnp.ones((1, 48, 48, 1)), train=False, return_features=True)
@@ -48,6 +51,7 @@ def test_create_resnet_and_forward_features() -> None:
 
 
 def test_build_finetune_mask_variants() -> None:
+    """Test finetune masks for default and frozen stage configurations."""
     resnet = model.create_resnet(depth=18, num_classes=2)
     params = resnet.init(jax.random.PRNGKey(2), jnp.ones((1, 48, 48, 1)), train=False)["params"]
 
@@ -63,6 +67,7 @@ def test_build_finetune_mask_variants() -> None:
 
 
 def test_maybe_load_pretrained_params_roundtrip(tmp_path: Path) -> None:
+    """Test that checkpoint round-trips reproduce identical parameters."""
     resnet = model.create_resnet(depth=18, num_classes=2)
     params = resnet.init(jax.random.PRNGKey(3), jnp.ones((1, 48, 48, 1)), train=False)["params"]
 
@@ -80,6 +85,7 @@ def test_maybe_load_pretrained_params_roundtrip(tmp_path: Path) -> None:
 
 
 def test_residual_block_not_implemented() -> None:
+    """Test that abstract residual block methods raise NotImplementedError."""
     block = model.ResidualBlock(features=16)
     with pytest.raises(NotImplementedError):
         block.init(jax.random.PRNGKey(0), jnp.ones((1, 4, 4, 16)), train=True)
@@ -88,6 +94,7 @@ def test_residual_block_not_implemented() -> None:
 
 
 def test_basic_block_requires_projection() -> None:
+    """Test that channel mismatches without projection raise an error."""
     block = model.BasicBlock(features=16, use_projection=False)
     key = jax.random.PRNGKey(0)
     x = jnp.ones((1, 8, 8, 8))
@@ -96,6 +103,7 @@ def test_basic_block_requires_projection() -> None:
 
 
 def test_bottleneck_projection_paths() -> None:
+    """Test bottleneck block projection branches with stride changes."""
     key = jax.random.PRNGKey(0)
     block = model.BottleneckBlock(features=32, strides=(2, 2), use_projection=True)
     x = jnp.ones((1, 8, 8, 16))
@@ -105,6 +113,7 @@ def test_bottleneck_projection_paths() -> None:
 
 
 def test_bottleneck_block_requires_projection() -> None:
+    """Test that bottleneck blocks validate projection requirements."""
     key = jax.random.PRNGKey(1)
     block = model.BottleneckBlock(features=32, use_projection=False)
     x = jnp.ones((1, 8, 8, 16))
@@ -113,6 +122,7 @@ def test_bottleneck_block_requires_projection() -> None:
 
 
 def test_resnet_input_channel_mismatch_raises() -> None:
+    """Test that input channel mismatches raise a ValueError."""
     resnet = model.create_resnet(depth=18, num_classes=2)
     variables = resnet.init(jax.random.PRNGKey(2), jnp.ones((1, 48, 48, 1)), train=False)
     with pytest.raises(ValueError):
@@ -120,6 +130,7 @@ def test_resnet_input_channel_mismatch_raises() -> None:
 
 
 def test_resnet_input_projection_branch() -> None:
+    """Test optional input projection handling during forward passes."""
     resnet = model.create_resnet(depth=18, num_classes=2, input_projection_channels=3)
     variables = resnet.init(jax.random.PRNGKey(9), jnp.ones((1, 48, 48, 3)), train=False)
     logits = resnet.apply(variables, jnp.ones((1, 48, 48, 3)), train=False)
@@ -127,6 +138,7 @@ def test_resnet_input_projection_branch() -> None:
 
 
 def test_resnet_projection_on_width_mismatch() -> None:
+    """Test that stage projection handles width mismatches."""
     base = model.create_resnet(depth=18, num_classes=2)
     altered = model.ResNet(config=replace(base.config, stem_width=32))
     variables = altered.init(jax.random.PRNGKey(3), jnp.ones((1, 48, 48, 1)), train=False)
@@ -135,6 +147,7 @@ def test_resnet_projection_on_width_mismatch() -> None:
 
 
 def test_resnet_dropout_applies_when_requested() -> None:
+    """Test dropout application when requested during training."""
     base = model.create_resnet(depth=18, num_classes=2)
     resnet = model.ResNet(config=base.config, include_top=True, dropout_rate=0.5)
     variables = resnet.init(jax.random.PRNGKey(4), jnp.ones((1, 48, 48, 1)), train=True)
@@ -150,11 +163,13 @@ def test_resnet_dropout_applies_when_requested() -> None:
 
 
 def test_create_resnet_invalid_depth() -> None:
+    """Test that unsupported depths raise errors."""
     with pytest.raises(ValueError):
         model.create_resnet(depth=99)
 
 
 def test_build_finetune_mask_without_container() -> None:
+    """Test finetune mask creation when a params dict is supplied."""
     resnet = model.create_resnet(depth=18, num_classes=2)
     params = resnet.init(jax.random.PRNGKey(6), jnp.ones((1, 48, 48, 1)), train=False)["params"]
     unfrozen = unfreeze(params)
@@ -163,12 +178,14 @@ def test_build_finetune_mask_without_container() -> None:
 
 
 def test_maybe_load_pretrained_params_no_checkpoint() -> None:
+    """Test that absence of a checkpoint returns the original parameters."""
     resnet = model.create_resnet(depth=18, num_classes=2)
     params = resnet.init(jax.random.PRNGKey(7), jnp.ones((1, 48, 48, 1)), train=False)["params"]
     assert model.maybe_load_pretrained_params(params, config=resnet.config) is params
 
 
 def test_build_finetune_mask_with_container() -> None:
+    """Test finetune mask creation when parameters are wrapped in a dict."""
     resnet = model.create_resnet(depth=18, num_classes=2)
     params = resnet.init(jax.random.PRNGKey(11), jnp.ones((1, 48, 48, 1)), train=False)["params"]
     mask = model.build_finetune_mask({"params": params}, config=resnet.config)
@@ -176,6 +193,7 @@ def test_build_finetune_mask_with_container() -> None:
 
 
 def test_maybe_load_pretrained_params_freezes_restored(monkeypatch) -> None:
+    """Test checkpoint restoration with mocked checkpointer behavior."""
     class DummyCheckpointer:
         def restore(self, path: str, item):
             return {"params": {"w": np.array([1.0])}}

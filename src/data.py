@@ -15,6 +15,11 @@ import numpy as np
 from PIL import Image
 from scipy.ndimage import gaussian_filter
 
+try:
+    RESAMPLE_BILINEAR = Image.Resampling.BILINEAR  # type: ignore[attr-defined]
+except AttributeError:  # pragma: no cover - fallback for older Pillow
+    RESAMPLE_BILINEAR = Image.BILINEAR  # type: ignore[attr-defined]
+
 
 CLASS_NAMES: Tuple[str, ...] = (
     "angry",
@@ -123,6 +128,7 @@ class DataModuleConfig:
     stats_cache_path: Optional[Path] = None
 
     def __post_init__(self) -> None:
+        """Normalize path-like fields after dataclass initialization."""
         self.data_dir = Path(self.data_dir)
         if self.stats_cache_path is not None:
             self.stats_cache_path = Path(self.stats_cache_path)
@@ -632,7 +638,7 @@ def _random_resized_crop(
 
     if crop.shape[0] != h or crop.shape[1] != w:
         pil_img = Image.fromarray((np.clip(crop, 0.0, 1.0) * 255).astype(np.uint8).squeeze(axis=-1))
-        pil_img = pil_img.resize((w, h), resample=Image.BILINEAR)
+        pil_img = pil_img.resize((w, h), resample=RESAMPLE_BILINEAR)
         crop = np.asarray(pil_img, dtype=np.float32)[..., None] / 255.0
     return crop
 
@@ -648,5 +654,5 @@ def _rotate_image(image: np.ndarray, angle: float) -> np.ndarray:
         np.ndarray: Rotated image array.
     """
     pil_img = Image.fromarray((np.clip(image, 0.0, 1.0) * 255).astype(np.uint8))
-    rotated = pil_img.rotate(angle, resample=Image.BILINEAR, fillcolor=0)
+    rotated = pil_img.rotate(angle, resample=RESAMPLE_BILINEAR, fillcolor=0)
     return np.asarray(rotated, dtype=np.float32) / 255.0

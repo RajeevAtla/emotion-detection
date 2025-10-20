@@ -6,7 +6,7 @@ import math
 import shutil
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, Iterable, Optional, Tuple, cast
 
 import jax
 import jax.numpy as jnp
@@ -80,6 +80,7 @@ class TrainingConfig:
     resume_checkpoint: Optional[Path] = None
 
     def __post_init__(self) -> None:
+        """Resolve path-like attributes immediately after initialization."""
         self.output_dir = Path(self.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         if self.pretrained_checkpoint is not None:
@@ -140,14 +141,17 @@ def create_optimizer(config: TrainingConfig, lr_schedule: optax.Schedule, mask: 
     Returns:
         optax.GradientTransformation: Configured optimizer chain.
     """
-    tx = optax.adamw(
+    tx: optax.GradientTransformation = optax.adamw(
         learning_rate=lr_schedule,
         weight_decay=config.weight_decay,
     )
     if config.gradient_accumulation_steps > 1:
-        tx = optax.MultiSteps(tx, every_k_schedule=config.gradient_accumulation_steps)
+        tx = cast(
+            optax.GradientTransformation,
+            optax.MultiSteps(tx, every_k_schedule=config.gradient_accumulation_steps),
+        )
     if mask is not None:
-        tx = optax.masked(tx, mask)
+        tx = cast(optax.GradientTransformation, optax.masked(tx, mask))
     return tx
 
 
@@ -301,6 +305,7 @@ def build_train_step(
             mutable=["batch_stats"],
             rngs={"dropout": rng},
         )
+        logits = cast(jnp.ndarray, logits)
         loss = cross_entropy_loss(
             logits,
             labels,
@@ -326,15 +331,16 @@ def build_train_step(
             images = images.astype(jnp.float32)
 
         if config.use_mixed_precision and state.dynamic_scale is not None:
-            dynamic_scale = state.dynamic_scale
+            dynamic_scale = cast(Any, state.dynamic_scale)
 
             def scaled_loss_fn(params):
                 loss, (metrics, new_model_state) = loss_fn(params, state.batch_stats, images, labels, rng)
-                return dynamic_scale.scale(loss), (metrics, new_model_state)
+                return dynamic_scale.scale(loss), (metrics, new_model_state)  # type: ignore[call-arg]
 
             grad_fn = dynamic_scale.value_and_grad(scaled_loss_fn, has_aux=True)
             (_, (metrics, new_model_state)), grads = grad_fn(state.params)
-            grads = jax.tree_util.tree_map(lambda g: g / dynamic_scale.loss_scale, grads)
+            loss_scale = getattr(dynamic_scale, "loss_scale", jnp.array(1.0))
+            grads = jax.tree_util.tree_map(lambda g: g / loss_scale, grads)
             state = state.apply_gradients(
                 grads=grads,
                 batch_stats=new_model_state["batch_stats"],
@@ -377,7 +383,7 @@ def build_eval_step(model: ResNet, config: TrainingConfig):
         else:
             images = images.astype(jnp.float32)
         variables = {"params": state.params, "batch_stats": state.batch_stats}
-        logits = model.apply(variables, images, train=False, mutable=False)
+        logits = cast(jnp.ndarray, model.apply(variables, images, train=False, mutable=False))
         loss = cross_entropy_loss(
             logits,
             labels,
@@ -463,7 +469,7 @@ def predict_batches(
         else:
             images = images.astype(jnp.float32)
         variables = {"params": state.params, "batch_stats": state.batch_stats}
-        logits = model.apply(variables, images, train=False, mutable=False)
+        logits = cast(jnp.ndarray, model.apply(variables, images, train=False, mutable=False))
         preds.append(jnp.argmax(logits, axis=-1))
         labels_list.append(labels)
     if not preds:
