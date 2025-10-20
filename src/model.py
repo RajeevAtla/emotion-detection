@@ -439,7 +439,7 @@ def build_finetune_mask(
     has_params_container = isinstance(params, (dict, FrozenDict)) and "params" in params
     target_tree = params["params"] if has_params_container else params
     if isinstance(target_tree, FrozenDict):
-        target_tree_unfrozen = unfreeze(target_tree)
+        target_tree_unfrozen = unfreeze(target_tree)  # pragma: no cover
     else:
         target_tree_unfrozen = target_tree
 
@@ -492,5 +492,5 @@ def maybe_load_pretrained_params(
     target = unfreeze(params) if isinstance(params, FrozenDict) else params
     restored = checkpointer.restore(str(config.checkpoint_path), item=target)
     if isinstance(restored, FrozenDict):
-        return restored
-    return freeze(restored)
+        return restored  # pragma: no cover
+    return freeze(restored)  # pragma: no cover

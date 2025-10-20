@@ -286,7 +286,10 @@ def to_serializable(obj: Any) -> Any:
     if isinstance(obj, (jnp.generic,)):
         return obj.item()
     if isinstance(obj, (np.ndarray, jnp.ndarray)):
-        return [to_serializable(v) for v in obj.tolist()]
+        data = obj.tolist()
+        if isinstance(data, (list, tuple)):
+            return [to_serializable(v) for v in data]
+        return to_serializable(data)
     if dataclasses.is_dataclass(obj):
         return {k: to_serializable(v) for k, v in asdict(obj).items()}
     if isinstance(obj, dict):
@@ -343,5 +346,5 @@ def main() -> None:
     print(f"Artifacts stored in {training_config.output_dir}")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

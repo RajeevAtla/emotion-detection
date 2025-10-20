@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import math
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, Iterable, Tuple
@@ -302,3 +303,128 @@ def test_train_and_evaluate_with_stubs(monkeypatch, tmp_path: Path) -> None:
 
     metrics = train_and_evaluate(config)
     assert "history" in metrics
+
+
+def test_build_eval_step_mixed_precision_casts() -> None:
+    record: Dict[str, jnp.dtype] = {}
+
+    class MixedModel:
+        config = train.create_resnet(depth=18, num_classes=2).config
+
+        @staticmethod
+        def apply(variables: Dict[str, Any], images: jnp.ndarray, *, train: bool, mutable=None, rngs=None):
+            record["dtype"] = images.dtype
+            logits = jnp.zeros((images.shape[0], 2), dtype=jnp.float32)
+            return logits
+
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=Path(".")),
+        output_dir=Path("out"),
+        use_mixed_precision=True,
+    )
+    eval_step = build_eval_step(MixedModel(), config)
+    state = _make_train_state()
+    eval_step(state, (jnp.ones((1, 2, 2, 1), dtype=jnp.float32), jnp.zeros((1,), dtype=jnp.int32)))
+    assert record["dtype"] == jnp.float16
+
+
+def test_predict_batches_mixed_precision_casts() -> None:
+    dtypes: list[jnp.dtype] = []
+
+    class MixedModel:
+        config = train.create_resnet(depth=18, num_classes=2).config
+
+        @staticmethod
+        def apply(variables: Dict[str, Any], images: jnp.ndarray, *, train: bool, mutable=None, rngs=None):
+            dtypes.append(images.dtype)
+            return jnp.zeros((images.shape[0], 2), dtype=jnp.float32)
+
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=Path(".")),
+        output_dir=Path("out"),
+        use_mixed_precision=True,
+    )
+    state = _make_train_state()
+    batches = [
+        (jnp.ones((2, 2, 2, 1), dtype=jnp.float32), jnp.zeros((2,), dtype=jnp.int32)),
+        (jnp.ones((1, 2, 2, 1), dtype=jnp.float32), jnp.ones((1,), dtype=jnp.int32)),
+    ]
+    preds, labels = predict_batches(state, MixedModel(), batches=batches, config=config)
+    assert preds.shape == labels.shape
+    assert all(dtype == jnp.float16 for dtype in dtypes)
+
+
+def test_train_and_evaluate_handles_restore_and_empty_metrics(monkeypatch, tmp_path: Path) -> None:
+    class EmptyDataModule:
+        def __init__(self, config):
+            self.config = config
+            self.class_weights = jnp.ones(2)
+
+        def setup(self):
+            pass
+
+        def split_counts(self):
+            return {"train": {"neg": 1, "pos": 1}, "val": {"neg": 0, "pos": 0}}
+
+        def train_batches(self, **kwargs):
+            return iter(())
+
+        def val_batches(self, **kwargs):
+            return []
+
+        def test_batches(self, **kwargs):
+            return []
+
+    class DummyWriter:
+        def __init__(self, log_dir):
+            self.log_dir = log_dir
+
+        def add_scalars(self, *args, **kwargs):
+            pass
+
+        def add_text(self, *args, **kwargs):
+            pass
+
+        def close(self):
+            pass
+
+    def stub_create_state(rng, model_obj, config_obj, schedule):
+        return _make_train_state()
+
+    class FakeResNet:
+        config = SimpleNamespace(num_classes=2)
+
+        def replace(self, **kwargs):
+            return self
+
+    monkeypatch.setattr(train, "EmotionDataModule", EmptyDataModule)
+    monkeypatch.setattr(train, "SummaryWriter", DummyWriter)
+    monkeypatch.setattr(train, "create_train_state", stub_create_state)
+    monkeypatch.setattr(
+        train,
+        "maybe_restore_checkpoint",
+        lambda config: {
+            "params": {"w": jnp.array(0.0)},
+            "batch_stats": freeze({}),
+            "opt_state": None,
+            "dynamic_scale": None,
+        },
+    )
+    monkeypatch.setattr(train, "create_resnet", lambda **kwargs: FakeResNet())
+    monkeypatch.setattr(train, "build_train_step", lambda *args, **kwargs: lambda state, batch, rng: (state, {}))
+    monkeypatch.setattr(train, "build_eval_step", lambda *args, **kwargs: lambda state, batch: ({}, jnp.array([], dtype=jnp.int32)))
+    monkeypatch.setattr(train, "save_checkpoint", lambda *args, **kwargs: None)
+    monkeypatch.setattr(train, "predict_batches", lambda *args, **kwargs: (jnp.array([], dtype=jnp.int32), jnp.array([], dtype=jnp.int32)))
+
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=tmp_path, batch_size=2),
+        output_dir=tmp_path / "run",
+        num_epochs=1,
+        checkpoint_every=1,
+        patience=1,
+        log_every=1,
+    )
+
+    metrics = train_and_evaluate(config)
+    assert math.isnan(metrics["history"]["train_loss"][0])
+    assert math.isnan(metrics["history"]["val_loss"][0])

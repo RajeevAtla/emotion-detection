@@ -11,6 +11,7 @@ import jax.numpy as jnp
 import numpy as np
 import orbax.checkpoint as ocp
 import pytest
+from flax.core import unfreeze
 
 from src import model
 
@@ -76,3 +77,114 @@ def test_maybe_load_pretrained_params_roundtrip(tmp_path: Path) -> None:
     restored_flat, _ = tree_util.tree_flatten(restored)
     for original, replica in zip(orig_flat, restored_flat):
         np.testing.assert_allclose(np.asarray(original), np.asarray(replica))
+
+
+def test_residual_block_not_implemented() -> None:
+    block = model.ResidualBlock(features=16)
+    with pytest.raises(NotImplementedError):
+        block.init(jax.random.PRNGKey(0), jnp.ones((1, 4, 4, 16)), train=True)
+    with pytest.raises(NotImplementedError):
+        model.ResidualBlock.__call__(block, jnp.ones((1, 4, 4, 16)), train=True)
+
+
+def test_basic_block_requires_projection() -> None:
+    block = model.BasicBlock(features=16, use_projection=False)
+    key = jax.random.PRNGKey(0)
+    x = jnp.ones((1, 8, 8, 8))
+    with pytest.raises(ValueError):
+        block.init(key, x, train=True)
+
+
+def test_bottleneck_projection_paths() -> None:
+    key = jax.random.PRNGKey(0)
+    block = model.BottleneckBlock(features=32, strides=(2, 2), use_projection=True)
+    x = jnp.ones((1, 8, 8, 16))
+    variables = block.init(key, x, train=True)
+    y, _ = block.apply(variables, x, train=True, mutable=["batch_stats"])
+    assert y.shape[-1] == 32
+
+
+def test_bottleneck_block_requires_projection() -> None:
+    key = jax.random.PRNGKey(1)
+    block = model.BottleneckBlock(features=32, use_projection=False)
+    x = jnp.ones((1, 8, 8, 16))
+    with pytest.raises(ValueError):
+        block.init(key, x, train=True)
+
+
+def test_resnet_input_channel_mismatch_raises() -> None:
+    resnet = model.create_resnet(depth=18, num_classes=2)
+    variables = resnet.init(jax.random.PRNGKey(2), jnp.ones((1, 48, 48, 1)), train=False)
+    with pytest.raises(ValueError):
+        resnet.apply(variables, jnp.ones((1, 48, 48, 3)), train=False)
+
+
+def test_resnet_input_projection_branch() -> None:
+    resnet = model.create_resnet(depth=18, num_classes=2, input_projection_channels=3)
+    variables = resnet.init(jax.random.PRNGKey(9), jnp.ones((1, 48, 48, 3)), train=False)
+    logits = resnet.apply(variables, jnp.ones((1, 48, 48, 3)), train=False)
+    assert logits.shape == (1, 2)
+
+
+def test_resnet_projection_on_width_mismatch() -> None:
+    base = model.create_resnet(depth=18, num_classes=2)
+    altered = model.ResNet(config=replace(base.config, stem_width=32))
+    variables = altered.init(jax.random.PRNGKey(3), jnp.ones((1, 48, 48, 1)), train=False)
+    logits = altered.apply(variables, jnp.ones((1, 48, 48, 1)), train=False)
+    assert logits.shape == (1, 2)
+
+
+def test_resnet_dropout_applies_when_requested() -> None:
+    base = model.create_resnet(depth=18, num_classes=2)
+    resnet = model.ResNet(config=base.config, include_top=True, dropout_rate=0.5)
+    variables = resnet.init(jax.random.PRNGKey(4), jnp.ones((1, 48, 48, 1)), train=True)
+    logits, updates = resnet.apply(
+        variables,
+        jnp.ones((1, 48, 48, 1)),
+        train=True,
+        mutable=["batch_stats"],
+        rngs={"dropout": jax.random.PRNGKey(5)},
+    )
+    assert logits.shape == (1, 2)
+    assert "batch_stats" in updates
+
+
+def test_create_resnet_invalid_depth() -> None:
+    with pytest.raises(ValueError):
+        model.create_resnet(depth=99)
+
+
+def test_build_finetune_mask_without_container() -> None:
+    resnet = model.create_resnet(depth=18, num_classes=2)
+    params = resnet.init(jax.random.PRNGKey(6), jnp.ones((1, 48, 48, 1)), train=False)["params"]
+    unfrozen = unfreeze(params)
+    mask = model.build_finetune_mask(unfrozen, config=resnet.config, freeze_classifier=True)
+    assert isinstance(mask, model.FrozenDict)
+
+
+def test_maybe_load_pretrained_params_no_checkpoint() -> None:
+    resnet = model.create_resnet(depth=18, num_classes=2)
+    params = resnet.init(jax.random.PRNGKey(7), jnp.ones((1, 48, 48, 1)), train=False)["params"]
+    assert model.maybe_load_pretrained_params(params, config=resnet.config) is params
+
+
+def test_build_finetune_mask_with_container() -> None:
+    resnet = model.create_resnet(depth=18, num_classes=2)
+    params = resnet.init(jax.random.PRNGKey(11), jnp.ones((1, 48, 48, 1)), train=False)["params"]
+    mask = model.build_finetune_mask({"params": params}, config=resnet.config)
+    assert isinstance(mask, model.FrozenDict)
+
+
+def test_maybe_load_pretrained_params_freezes_restored(monkeypatch) -> None:
+    class DummyCheckpointer:
+        def restore(self, path: str, item):
+            return {"params": {"w": np.array([1.0])}}
+
+    monkeypatch.setattr(model.ocp, "PyTreeCheckpointer", lambda: DummyCheckpointer())
+    resnet = model.create_resnet(depth=18, num_classes=2)
+    params = resnet.init(jax.random.PRNGKey(8), jnp.ones((1, 48, 48, 1)), train=False)["params"]
+    restored = model.maybe_load_pretrained_params(
+        params,
+        config=replace(resnet.config, checkpoint_path=Path("dummy")),
+    )
+    assert isinstance(restored, model.FrozenDict)

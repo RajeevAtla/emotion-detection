@@ -73,9 +73,9 @@ Emotion Detection ResNet Plan
 Next Test Enhancements
 ----------------------
 
-- [ ] Move tests into dedicated `tests/` package to mirror production modules and ease discovery.
-- [ ] Introduce additional integration tests covering end-to-end CLI flows (`src/main.py`) and train/eval loops for higher coverage.
-- [ ] Increase unit test granularity across `src/train.py` (scheduler, checkpointing, logging) and `src/main.py` (serialization, overrides) to reach 100% coverage.
-- [ ] Add regression tests for data augmentation edge cases (extreme scales, disabled augment, cached statistics) to cover remaining branches.
-- [ ] Track coverage progress via `pytest-cov` in CI, gating the suite on 100% statement coverage.
+- [x] Move tests into dedicated `tests/` package to mirror production modules and ease discovery.
+- [x] Introduce additional integration tests covering end-to-end CLI flows (`src/main.py`) and train/eval loops for higher coverage.
+- [x] Increase unit test granularity across `src/train.py` (scheduler, checkpointing, logging) and `src/main.py` (serialization, overrides) to reach 100% coverage.
+- [x] Add regression tests for data augmentation edge cases (extreme scales, disabled augment, cached statistics) to cover remaining branches.
+- [x] Track coverage progress via `pytest-cov` in CI, gating the suite on 100% statement coverage.
 

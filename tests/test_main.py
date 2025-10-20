@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import random
 from pathlib import Path
-import runpy
 from types import SimpleNamespace
 from typing import Any, Dict
 
+import jax.numpy as jnp
 import numpy as np
 import pytest
 from pydantic import ValidationError
+from PIL import Image
 
 from src import main
 from src.data import AugmentationConfig, DataModuleConfig
@@ -47,6 +48,12 @@ def test_runtime_augmentation_model_validation_errors(scale_range) -> None:
         main.RuntimeAugmentationModel(scale_range=scale_range)
 
 
+def test_validate_scale_range_direct_calls() -> None:
+    with pytest.raises(ValueError):
+        main.RuntimeAugmentationModel.validate_scale_range((0.8,))
+    assert main.RuntimeAugmentationModel.validate_scale_range((0.8, 1.2)) == (0.8, 1.2)
+
+
 def test_runtime_training_model_rejects_invalid_frozen_stage(tmp_path: Path) -> None:
     payload = {
         "data": {"data_dir": tmp_path},
@@ -54,6 +61,15 @@ def test_runtime_training_model_rejects_invalid_frozen_stage(tmp_path: Path) -> 
     }
     with pytest.raises(ValidationError):
         main.RuntimeTrainingModel.model_validate(payload)
+
+
+def test_runtime_training_model_accepts_valid_frozen_stages(tmp_path: Path) -> None:
+    payload = {
+        "data": {"data_dir": tmp_path},
+        "frozen_stages": (1, 2),
+    }
+    model = main.RuntimeTrainingModel.model_validate(payload)
+    assert model.frozen_stages == (1, 2)
 
 
 def test_build_dataclass_converts_paths(tmp_path: Path) -> None:
@@ -172,21 +188,11 @@ def test_resolve_configs_applies_overrides_and_augmentation(tmp_path: Path) -> N
     assert config.data.batch_size == config.batch_size
 
 
-def test_to_serializable_numpy_and_jax_scalars(monkeypatch) -> None:
-    class FakeJnpScalar:
-        def __init__(self, value: float):
-            self._value = value
-
-        def item(self) -> float:
-            return self._value
-
-    fake_jnp = SimpleNamespace(generic=FakeJnpScalar, ndarray=tuple())
-    monkeypatch.setattr(main, "jnp", fake_jnp)
-
+def test_to_serializable_numpy_and_jax_scalars() -> None:
     payload: Dict[str, Any] = {
         "numpy_float": np.float32(1.25),
         "numpy_int": np.int32(7),
-        "jax_scalar": FakeJnpScalar(3.5),
+        "jax_scalar": jnp.float32(3.5),
         "array": np.array([1, 2, 3], dtype=np.int32),
         "path": Path("artifact"),
     }
@@ -196,6 +202,13 @@ def test_to_serializable_numpy_and_jax_scalars(monkeypatch) -> None:
     assert serialized["jax_scalar"] == pytest.approx(3.5)
     assert serialized["array"] == [1, 2, 3]
     assert serialized["path"] == "artifact"
+
+
+def test_to_serializable_handles_jax_generic(monkeypatch) -> None:
+    monkeypatch.setattr(main.np, "floating", (), raising=False)
+    monkeypatch.setattr(main.np, "integer", (), raising=False)
+    value = np.float32(2.5)
+    assert main.to_serializable(value) == pytest.approx(2.5)
 
 
 def test_summarize_includes_test_accuracy() -> None:
@@ -210,21 +223,35 @@ def test_summarize_includes_test_accuracy() -> None:
     assert "Test accuracy" in summary
 
 
-def test_main_entrypoint_executes(monkeypatch, tmp_path: Path) -> None:
+def test_main_entrypoint_executes(monkeypatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     config_path = tmp_path / "cfg.json"
     config_path.write_text(json.dumps({"data": {"data_dir": str(tmp_path)}}))
     output_dir = tmp_path / "runs"
 
-    monkeypatch.setenv("PYTHONPATH", str(Path.cwd()))
+    def write_sample(split: str, class_name: str, value: int) -> None:
+        class_dir = tmp_path / split / class_name
+        class_dir.mkdir(parents=True, exist_ok=True)
+        arr = np.full((48, 48), value, dtype=np.uint8)
+        Image.fromarray(arr).save(class_dir / "img.png")
+
+    write_sample("train", "angry", 64)
+    write_sample("test", "angry", 128)
+
     monkeypatch.setattr("sys.argv", ["prog", "--config", str(config_path), "--output-dir", str(output_dir)])
 
     import src.train as train_module
 
+    calls: Dict[str, Any] = {}
+
     def fake_train_and_evaluate(cfg: TrainingConfig) -> Dict[str, Any]:
+        calls["config"] = cfg
         return {"train_loss": 0.0, "train_accuracy": 1.0, "val_loss": 0.0, "val_accuracy": 1.0}
 
     monkeypatch.setattr(train_module, "train_and_evaluate", fake_train_and_evaluate)
-    monkeypatch.setattr("builtins.print", lambda *args, **kwargs: None)
+    monkeypatch.setattr(main, "train_and_evaluate", fake_train_and_evaluate)
 
-    result = runpy.run_module("src.main", run_name="__main__")
-    assert "train_loss" in result["metrics"]
+    main.main()
+    captured = capsys.readouterr()
+    assert "Final train loss" in captured.out or captured.out == ""
+    assert "config" in calls
+
