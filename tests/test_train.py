@@ -1,0 +1,304 @@
+"""Tests for training utilities and orchestration."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, Dict, Iterable, Tuple
+
+import jax
+import jax.numpy as jnp
+import numpy as np
+import optax
+import pytest
+from flax.core import freeze
+from flax.training.dynamic_scale import DynamicScale
+
+from src import train
+from src.data import DataModuleConfig
+from src.train import (
+    TrainingConfig,
+    TrainState,
+    build_eval_step,
+    build_train_step,
+    compute_confusion_matrix,
+    create_learning_rate_schedule,
+    create_optimizer,
+    create_train_state,
+    cross_entropy_loss,
+    format_confusion_matrix,
+    maybe_restore_checkpoint,
+    predict_batches,
+    save_checkpoint,
+    train_and_evaluate,
+)
+
+
+def test_learning_rate_schedule_shape() -> None:
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=Path(".")),
+        output_dir=Path("runs"),
+        num_epochs=2,
+        warmup_epochs=1,
+        learning_rate=0.01,
+        min_learning_rate=0.001,
+    )
+    schedule = create_learning_rate_schedule(config, steps_per_epoch=4)
+    assert float(schedule(0)) == pytest.approx(0.0)
+    assert float(schedule(2)) == pytest.approx(0.005, rel=1e-5)
+    assert float(schedule(4)) == pytest.approx(0.01, rel=1e-5)
+    assert float(schedule(10)) == pytest.approx(0.001, rel=1e-2)
+
+
+def test_create_optimizer_with_mask_and_accum() -> None:
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=Path(".")),
+        output_dir=Path("out"),
+        gradient_accumulation_steps=2,
+    )
+    schedule = lambda _: 0.1
+    params = freeze({"w": jnp.array(1.0)})
+    mask = freeze({"w": True})
+    tx = create_optimizer(config, schedule, mask)
+    opt_state = tx.init(params)
+    assert hasattr(opt_state, "inner_state")
+
+
+def test_create_train_state_with_pretrained(monkeypatch, tmp_path: Path) -> None:
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=tmp_path),
+        output_dir=tmp_path,
+        freeze_stem=True,
+        freeze_classifier=True,
+        frozen_stages=(1,),
+        pretrained_checkpoint=tmp_path / "ckpt",
+    )
+    monkeypatch.setattr(train, "maybe_load_pretrained_params", lambda params, config: params)
+    monkeypatch.setattr(
+        train,
+        "create_optimizer",
+        lambda *args, **kwargs: SimpleNamespace(init=lambda params: "opt_state"),
+    )
+    resnet = train.create_resnet(depth=18, num_classes=2)
+    schedule = create_learning_rate_schedule(config, steps_per_epoch=1)
+    state = create_train_state(jax.random.PRNGKey(0), resnet, config, schedule)
+    assert isinstance(state, TrainState)
+    assert state.dynamic_scale is None
+
+
+def test_create_train_state_without_freeze(tmp_path: Path) -> None:
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=tmp_path),
+        output_dir=tmp_path,
+    )
+    resnet = train.create_resnet(depth=18, num_classes=2)
+    schedule = create_learning_rate_schedule(config, steps_per_epoch=1)
+    state = create_train_state(jax.random.PRNGKey(1), resnet, config, schedule)
+    assert isinstance(state, TrainState)
+
+
+def _dummy_apply_fn(variables: Dict[str, Any], images: jnp.ndarray, *, train: bool, mutable=None, rngs=None):
+    logits = jnp.stack([jnp.sum(images, axis=(1, 2, 3)), jnp.zeros(images.shape[0])], axis=-1)
+    batch_stats = variables.get("batch_stats", freeze({}))
+    if mutable:
+        return logits, {"batch_stats": batch_stats}
+    return logits
+
+
+def _make_train_state(dynamic: bool = False) -> TrainState:
+    params = {"w": jnp.array(1.0)}
+    tx = optax.sgd(learning_rate=0.1)
+    state = TrainState.create(apply_fn=_dummy_apply_fn, params=params, tx=tx, batch_stats=freeze({}))
+    if dynamic:
+        state = state.replace(dynamic_scale=DynamicScale())
+    return state
+
+
+class DummyModel:
+    config = train.create_resnet(depth=18, num_classes=2).config
+
+    @staticmethod
+    def apply(variables: Dict[str, Any], images: jnp.ndarray, *, train: bool, mutable=None, rngs=None):
+        return _dummy_apply_fn(variables, images, train=train, mutable=mutable, rngs=rngs)
+
+
+def test_cross_entropy_loss_with_smoothing_and_weights() -> None:
+    logits = jnp.array([[2.0, 0.5]])
+    labels = jnp.array([0])
+    weights = jnp.array([0.7, 0.3])
+    loss = cross_entropy_loss(logits, labels, label_smoothing=0.1, class_weights=weights)
+    assert float(loss) > 0
+
+
+def test_build_train_step_standard() -> None:
+    config = TrainingConfig(data=DataModuleConfig(data_dir=Path(".")), output_dir=Path("out"))
+    train_step = build_train_step(DummyModel(), config, class_weights=jnp.ones(2))
+    state = _make_train_state()
+    images = jnp.ones((2, 2, 2, 1))
+    labels = jnp.zeros((2,), dtype=jnp.int32)
+    new_state, metrics = train_step(state, (images, labels), jax.random.PRNGKey(0))
+    assert metrics["loss"] >= 0
+    assert isinstance(new_state, TrainState)
+
+
+def test_build_train_step_mixed_precision() -> None:
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=Path(".")),
+        output_dir=Path("out"),
+        use_mixed_precision=True,
+    )
+    train_step = build_train_step(DummyModel(), config, class_weights=None)
+    class DummyDynamicScale:
+        loss_scale = jnp.array(1.0)
+
+        def scale(self, loss):
+            return loss
+
+        def value_and_grad(self, fn, has_aux):
+            def wrapped(params):
+                loss, aux = fn(params)
+                grads = jax.tree_util.tree_map(jnp.zeros_like, params)
+                return (loss, aux), grads
+
+            return wrapped
+
+    state = _make_train_state()
+    state = state.replace(dynamic_scale=DummyDynamicScale())
+    images = jnp.ones((1, 2, 2, 1))
+    labels = jnp.zeros((1,), dtype=jnp.int32)
+    jax.config.update("jax_disable_jit", True)
+    try:
+        train_step(state, (images, labels), jax.random.PRNGKey(1))
+    finally:
+        jax.config.update("jax_disable_jit", False)
+
+
+def test_build_eval_step_returns_predictions() -> None:
+    config = TrainingConfig(data=DataModuleConfig(data_dir=Path(".")), output_dir=Path("out"))
+    eval_step = build_eval_step(DummyModel(), config)
+    state = _make_train_state()
+    metrics, preds = eval_step(state, (jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32)))
+    assert "accuracy" in metrics
+    assert preds.shape == (1,)
+
+
+def test_confusion_matrix_helpers() -> None:
+    preds = jnp.array([0, 1, 1])
+    labels = jnp.array([0, 0, 1])
+    cm = compute_confusion_matrix(preds, labels, num_classes=2)
+    assert cm.tolist() == [[1, 1], [0, 1]]
+    text = format_confusion_matrix(cm, ["neg", "pos"])
+    assert "neg" in text and "pos" in text
+
+
+def test_checkpoint_save_and_restore(tmp_path: Path) -> None:
+    config = TrainingConfig(data=DataModuleConfig(data_dir=tmp_path), output_dir=tmp_path, max_checkpoints=2)
+    state = _make_train_state()
+    save_checkpoint(state, config, epoch=1)
+    save_checkpoint(state, config, epoch=2)
+    save_checkpoint(state, config, epoch=3)
+    assert not (config.output_dir / "checkpoints" / "epoch_0001").exists()
+    restored = maybe_restore_checkpoint(replace(config, resume_checkpoint=config.output_dir / "checkpoints" / "epoch_0003"))
+    assert restored is not None
+
+
+def test_predict_batches_handles_empty_and_non_empty() -> None:
+    config = TrainingConfig(data=DataModuleConfig(data_dir=Path(".")), output_dir=Path("out"))
+    state = _make_train_state()
+    preds, labels = predict_batches(state, DummyModel(), batches=[], config=config)
+    assert preds.size == 0
+
+    batches = [
+        (jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32)),
+        (jnp.ones((1, 2, 2, 1)) * 2, jnp.ones((1,), dtype=jnp.int32)),
+    ]
+    preds, labels = predict_batches(state, DummyModel(), batches=batches, config=config)
+    assert preds.shape == labels.shape
+
+
+def test_train_and_evaluate_with_stubs(monkeypatch, tmp_path: Path) -> None:
+    class StubDataModule:
+        def __init__(self, config):
+            self.config = config
+            self.class_weights = jnp.ones(2)
+
+        def setup(self):
+            pass
+
+        def split_counts(self):
+            return {"train": {"neg": 2, "pos": 2}, "val": {"neg": 1, "pos": 1}}
+
+        def train_batches(self, **kwargs):
+            def generator():
+                yield jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32)
+                yield jnp.ones((1, 2, 2, 1)) * 2, jnp.ones((1,), dtype=jnp.int32)
+            return generator()
+
+        def val_batches(self, **kwargs):
+            return [(jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32))]
+
+        def test_batches(self, **kwargs):
+            return [(jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32))]
+
+    class StubWriter:
+        def __init__(self, log_dir):
+            self.log_dir = log_dir
+
+        def add_scalars(self, *args, **kwargs):
+            pass
+
+        def add_text(self, *args, **kwargs):
+            pass
+
+        def close(self):
+            pass
+
+    class StubState:
+        def __init__(self):
+            self.apply_gradients_calls = 0
+
+        def apply_gradients(self, *, grads, batch_stats):
+            self.apply_gradients_calls += 1
+            return self
+
+    def stub_create_state(rng, model_obj, config_obj, schedule):
+        return StubState()
+
+    def stub_train_step(state, batch, rng):
+        return state, {"loss": jnp.array(0.1), "accuracy": jnp.array(1.0)}
+
+    val_losses = [jnp.array(0.2), jnp.array(0.2)]
+
+    def stub_eval_step(state, batch):
+        return {"loss": val_losses.pop(0), "accuracy": jnp.array(0.9)}, jnp.zeros(batch[0].shape[0], dtype=jnp.int32)
+
+    def stub_predict_batches(state, model_obj, batches, config_obj):
+        return jnp.zeros(2, dtype=jnp.int32), jnp.zeros(2, dtype=jnp.int32)
+
+    monkeypatch.setattr(train, "EmotionDataModule", StubDataModule)
+    monkeypatch.setattr(train, "SummaryWriter", StubWriter)
+    class FakeResNet:
+        config = SimpleNamespace(num_classes=2)
+
+        def replace(self, **kwargs):
+            return self
+
+    monkeypatch.setattr(train, "create_resnet", lambda **kwargs: FakeResNet())
+    monkeypatch.setattr(train, "create_train_state", stub_create_state)
+    monkeypatch.setattr(train, "build_train_step", lambda *args, **kwargs: stub_train_step)
+    monkeypatch.setattr(train, "build_eval_step", lambda *args, **kwargs: stub_eval_step)
+    monkeypatch.setattr(train, "save_checkpoint", lambda *args, **kwargs: None)
+    monkeypatch.setattr(train, "predict_batches", stub_predict_batches)
+
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=tmp_path, batch_size=2),
+        output_dir=tmp_path / "run",
+        num_epochs=2,
+        checkpoint_every=1,
+        patience=1,
+        log_every=1,
+    )
+
+    metrics = train_and_evaluate(config)
+    assert "history" in metrics

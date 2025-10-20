@@ -145,7 +145,7 @@ def create_optimizer(config: TrainingConfig, lr_schedule: optax.Schedule, mask: 
         weight_decay=config.weight_decay,
     )
     if config.gradient_accumulation_steps > 1:
-        tx = optax.MultiSteps(tx, every_k=config.gradient_accumulation_steps)
+        tx = optax.MultiSteps(tx, every_k_schedule=config.gradient_accumulation_steps)
     if mask is not None:
         tx = optax.masked(tx, mask)
     return tx
