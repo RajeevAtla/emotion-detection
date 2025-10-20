@@ -107,9 +107,9 @@ planning.md     # High-level roadmap & completed tasks
 
 ## CI Pipeline
 The GitHub Actions workflow performs:
-1. `uv sync`
-2. `uv tool run ruff check`
-3. `uv tool run ty check src`
+1. `uv sync --dev`
+2. `uv run ruff check`
+3. `uv run ty check src`
 4. `uv run pytest --cov=src`
 
 ## License
