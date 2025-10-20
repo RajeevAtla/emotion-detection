@@ -85,6 +85,15 @@ Docstring & Style Compliance
 - [x] Ensure every module under `src/` and `tests/` has a Google-style docstring.
 - [x] Add Google-style docstrings to all public functions, fixtures, and methods across the codebase to improve readability and lint compliance.
 
+Typing Cleanup Plan
+-------------------
+
+- [x] Audit existing type annotations and catalogue remaining `Any` usages across `src/` and `tests/`.
+- [x] Refine types in `src/train.py`, replacing `Any` with concrete aliases (`jax.Array`, `optax.GradientTransformation`, `Mapping`, etc.).
+- [x] Tighten `src/model.py` annotations to avoid `Any`, introducing protocol/typevars where useful.
+- [x] Update supporting modules/tests (e.g., `tests/test_train.py`, helper stubs) so they align with stricter typing without falling back to `Any`.
+- [x] Run `uv tool run ty check src`, `uv tool run ruff check`, and `uv run pytest --cov=src` to validate the new typings.
+
 GitHub Actions CI
 -----------------
 

@@ -12,7 +12,7 @@ import jax.numpy as jnp
 import numpy as np
 import orbax.checkpoint as ocp
 import pytest
-from flax.core import unfreeze
+from flax.core import FrozenDict, unfreeze
 from src import model
 
 warnings.filterwarnings(
@@ -24,7 +24,6 @@ warnings.filterwarnings(
 pytestmark = pytest.mark.filterwarnings(
     "ignore:Sharding info not provided when restoring:UserWarning"
 )
-
 
 
 def test_resnet_config_presets_and_overrides() -> None:
@@ -248,3 +247,49 @@ def test_maybe_load_pretrained_params_freezes_restored(monkeypatch) -> None:
         config=replace(resnet.config, checkpoint_path=Path("dummy")),
     )
     assert isinstance(restored, model.FrozenDict)
+
+
+def test_build_finetune_mask_accepts_plain_mapping() -> None:
+    params = {"dummy": jnp.ones((1,))}
+    mask = model.build_finetune_mask(params, config=model.resnet_config(18))
+    assert isinstance(mask, FrozenDict)
+
+
+def test_build_finetune_mask_with_container_returns_frozens() -> None:
+    params = FrozenDict({"params": {"dummy": jnp.ones((1,))}})
+    mask = model.build_finetune_mask(params, config=model.resnet_config(18))
+    assert isinstance(mask, FrozenDict)
+
+
+def test_maybe_load_pretrained_params_handles_non_frozendict(monkeypatch) -> None:
+    class DummyCheckpointer:
+        def restore(self, path: str, item, restore_args=None):
+            return {"params": {"w": np.array([1.0])}}
+
+    monkeypatch.setattr(model.ocp, "PyTreeCheckpointer", lambda: DummyCheckpointer())
+    resnet = model.create_resnet(depth=18, num_classes=2)
+    params = resnet.init(jax.random.PRNGKey(9), jnp.ones((1, 48, 48, 1)), train=False)[
+        "params"
+    ]
+    restored = model.maybe_load_pretrained_params(
+        params,
+        config=replace(resnet.config, checkpoint_path=Path("dummy")),
+    )
+    assert isinstance(restored, FrozenDict)
+
+
+def test_maybe_load_pretrained_params_returns_frozendict(monkeypatch) -> None:
+    class DummyCheckpointer:
+        def restore(self, path: str, item, restore_args=None):
+            return FrozenDict({"params": {"w": np.array([2.0])}})
+
+    monkeypatch.setattr(model.ocp, "PyTreeCheckpointer", lambda: DummyCheckpointer())
+    resnet = model.create_resnet(depth=18, num_classes=2)
+    params = resnet.init(jax.random.PRNGKey(10), jnp.ones((1, 48, 48, 1)), train=False)[
+        "params"
+    ]
+    restored = model.maybe_load_pretrained_params(
+        params,
+        config=replace(resnet.config, checkpoint_path=Path("dummy")),
+    )
+    assert isinstance(restored, FrozenDict)

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Optional, Tuple, Type, Union, cast
 
+import jax
 import jax.numpy as jnp
 from flax import linen as nn
 from flax import traverse_util
@@ -13,6 +15,8 @@ from flax.core import FrozenDict, freeze, unfreeze
 import orbax.checkpoint as ocp
 
 ModuleDef = Type[nn.Module]
+PyTree = Union[jax.Array, jnp.ndarray, Mapping[str, "PyTree"], Sequence["PyTree"]]
+BoolTree = Union[bool, Mapping[str, "BoolTree"]]
 
 
 @dataclass(frozen=True)
@@ -63,7 +67,7 @@ def resnet_config(depth: int, **overrides: object) -> ResNetConfig:
     Raises:
         ValueError: If ``depth`` is not supported.
     """
-    presets: Dict[int, Tuple[Tuple[int, ...], str]] = {
+    presets: dict[int, Tuple[Tuple[int, ...], str]] = {
         18: ((2, 2, 2, 2), "basic"),
         34: ((3, 4, 6, 3), "basic"),
         50: ((3, 4, 6, 3), "bottleneck"),
@@ -278,7 +282,7 @@ class ResNet(nn.Module):
         *,
         train: bool = True,
         return_features: bool = False,
-    ) -> jnp.ndarray | Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
+    ) -> jnp.ndarray | Tuple[jnp.ndarray, dict[str, jnp.ndarray]]:
         """Run a forward pass through the ResNet.
 
         Args:
@@ -287,7 +291,7 @@ class ResNet(nn.Module):
             return_features: If True, also return intermediate feature maps.
 
         Returns:
-            Union[jnp.ndarray, Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]]: Logits
+            Union[jnp.ndarray, Tuple[jnp.ndarray, dict[str, jnp.ndarray]]]: Logits
             tensor, optionally paired with a dictionary of named features.
 
         Raises:
@@ -326,7 +330,7 @@ class ResNet(nn.Module):
         )(x, use_running_average=not train)
         x = nn.relu(x)
 
-        features: Dict[str, jnp.ndarray] = {"stem": x}
+        features: dict[str, jnp.ndarray] = {"stem": x}
         for stage_index, (width, num_blocks) in enumerate(
             zip(cfg.stage_widths, cfg.blocks_per_stage)
         ):
@@ -428,36 +432,29 @@ def create_resnet(
 
 
 def build_finetune_mask(
-    params: FrozenDict[str, Any] | Dict[str, Any],
+    params: FrozenDict[str, PyTree] | Mapping[str, PyTree],
     *,
     config: ResNetConfig,
     freeze_classifier: Optional[bool] = None,
-) -> FrozenDict[str, Any]:
-    """Return a boolean mask marking which parameters remain trainable.
-
-    Args:
-        params: Parameter pytree to derive the mask from.
-        config: ResNet configuration describing frozen components.
-        freeze_classifier: Optional override for classifier freezing.
-
-    Returns:
-        FrozenDict[str, Any]: Boolean pytree matching ``params``.
-    """
+) -> FrozenDict[str, BoolTree]:
+    """Return a boolean mask marking which parameters remain trainable."""
     if freeze_classifier is None:
         freeze_classifier = config.freeze_classifier
 
     has_params_container = isinstance(params, (dict, FrozenDict)) and "params" in params
-    target_tree = params["params"] if has_params_container else params
-    if isinstance(target_tree, FrozenDict):
-        target_tree_unfrozen = unfreeze(target_tree)  # pragma: no cover
+    param_tree = params["params"] if has_params_container else params
+    if isinstance(param_tree, FrozenDict):
+        target_tree: Mapping[str, PyTree] = unfreeze(param_tree)
     else:
-        target_tree_unfrozen = target_tree
+        target_tree = dict(param_tree)
 
-    flat = traverse_util.flatten_dict(target_tree_unfrozen)
+    flat = traverse_util.flatten_dict(
+        cast(Mapping[tuple[str, ...], PyTree], target_tree)
+    )
 
     frozen_stages = {f"stage{stage}_" for stage in config.frozen_stages}
-    mask_flat: Dict[Tuple[str, ...], bool] = {}
-    for path, value in flat.items():
+    mask_flat: dict[tuple[str, ...], bool] = {}
+    for path in flat.keys():
         top_level = path[0] if isinstance(path, tuple) and path else path
         trainable = True
 
@@ -481,36 +478,27 @@ def build_finetune_mask(
 
         mask_flat[path] = trainable
 
-    mask_tree = traverse_util.unflatten_dict(mask_flat)
-    mask_tree = freeze(mask_tree)
+    mask_tree = freeze(traverse_util.unflatten_dict(mask_flat))
     if has_params_container:
-        return freeze({"params": mask_tree})  # type: ignore[return-value]
-    return mask_tree  # type: ignore[return-value]
+        return freeze({"params": mask_tree})
+    return mask_tree
 
 
 def maybe_load_pretrained_params(
-    params: FrozenDict[str, Any],
+    params: FrozenDict[str, PyTree],
     *,
     config: ResNetConfig,
-) -> FrozenDict[str, Any]:
-    """Load parameters from a checkpoint when configured.
-
-    Args:
-        params: Parameter pytree to update.
-        config: ResNet configuration that may specify a checkpoint path.
-
-    Returns:
-        FrozenDict[str, Any]: Parameter pytree with checkpoint values applied.
-    """
+) -> FrozenDict[str, PyTree]:
+    """Load parameters from a checkpoint when configured."""
     if config.checkpoint_path is None:
         return params
 
     checkpointer = ocp.PyTreeCheckpointer()
-    target = unfreeze(params) if isinstance(params, FrozenDict) else params
+    target = unfreeze(params)
     restore_args = ocp.args.PyTreeRestore(item=target)
     restored = checkpointer.restore(
         str(config.checkpoint_path), item=target, restore_args=restore_args
     )
     if isinstance(restored, FrozenDict):
-        return restored  # pragma: no cover
-    return freeze(restored)  # pragma: no cover
+        return restored
+    return freeze(cast(dict[str, PyTree], restored))

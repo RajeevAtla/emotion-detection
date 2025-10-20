@@ -6,9 +6,10 @@ import dataclasses
 import json
 import math
 from collections import defaultdict
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Optional, Tuple
 
 import jax.numpy as jnp
 import numpy as np
@@ -30,7 +31,7 @@ CLASS_NAMES: Tuple[str, ...] = (
     "sad",
     "surprised",
 )
-CLASS_TO_INDEX: Dict[str, int] = {name: idx for idx, name in enumerate(CLASS_NAMES)}
+CLASS_TO_INDEX: dict[str, int] = {name: idx for idx, name in enumerate(CLASS_NAMES)}
 IMAGE_EXTENSIONS: Tuple[str, ...] = (".png", ".jpg", ".jpeg")
 DEFAULT_STATS_FILENAME = "stats_train.json"
 
@@ -148,9 +149,9 @@ class EmotionDataModule:
             config: Data module configuration.
         """
         self.config = config
-        self._train_samples: List[Sample] = []
-        self._val_samples: List[Sample] = []
-        self._test_samples: List[Sample] = []
+        self._train_samples: list[Sample] = []
+        self._val_samples: list[Sample] = []
+        self._test_samples: list[Sample] = []
         self._stats: Optional[DatasetStats] = None
         self._class_weights: Optional[jnp.ndarray] = None
 
@@ -342,8 +343,8 @@ class EmotionDataModule:
             if len(batch_indices) < batch_size and drop_last:
                 continue
 
-            images: List[np.ndarray] = []
-            labels: List[int] = []
+            images: list[np.ndarray] = []
+            labels: list[int] = []
             for idx in batch_indices:
                 sample = samples[idx]
                 image = _load_image(sample.path)
@@ -358,11 +359,11 @@ class EmotionDataModule:
             batch_labels = jnp.asarray(np.array(labels, dtype=np.int32))
             yield batch_images, batch_labels
 
-    def split_counts(self) -> Dict[str, Dict[str, int]]:
+    def split_counts(self) -> dict[str, dict[str, int]]:
         """Return class distributions for each split.
 
         Returns:
-            Dict[str, Dict[str, int]]: Mapping of split names to class counts.
+            dict[str, dict[str, int]]: Mapping of split names to class counts.
         """
         return {
             "train": compute_class_distribution(self._train_samples),
@@ -371,7 +372,7 @@ class EmotionDataModule:
         }
 
 
-def _scan_split(data_dir: Path, *, split: str) -> List[Sample]:
+def _scan_split(data_dir: Path, *, split: str) -> list[Sample]:
     """Scan a dataset split directory and collect samples.
 
     Args:
@@ -379,7 +380,7 @@ def _scan_split(data_dir: Path, *, split: str) -> List[Sample]:
         split: Split name (e.g., ``"train"`` or ``"test"``).
 
     Returns:
-        List[Sample]: Collected samples for the split.
+        list[Sample]: Collected samples for the split.
 
     Raises:
         FileNotFoundError: If the split directory does not exist.
@@ -389,7 +390,7 @@ def _scan_split(data_dir: Path, *, split: str) -> List[Sample]:
     if not split_dir.exists():
         raise FileNotFoundError(f"Expected split directory at {split_dir}")
 
-    samples: List[Sample] = []
+    samples: list[Sample] = []
     for class_dir in sorted(split_dir.iterdir()):
         if not class_dir.is_dir():
             continue
@@ -408,7 +409,7 @@ def stratified_split(
     samples: Sequence[Sample],
     val_ratio: float,
     seed: int,
-) -> Tuple[List[int], List[int]]:
+) -> Tuple[list[int], list[int]]:
     """Create stratified train and validation index lists.
 
     Args:
@@ -417,7 +418,7 @@ def stratified_split(
         seed: Random seed used when shuffling indices.
 
     Returns:
-        Tuple[List[int], List[int]]: Training indices, validation indices.
+        Tuple[list[int], list[int]]: Training indices, validation indices.
     """
     if not samples:
         return [], []
@@ -427,12 +428,12 @@ def stratified_split(
         return indices, []
 
     rng = np.random.default_rng(seed)
-    per_class: Dict[int, List[int]] = defaultdict(list)
+    per_class: dict[int, list[int]] = defaultdict(list)
     for idx, sample in enumerate(samples):
         per_class[sample.label].append(idx)
 
-    train_indices: List[int] = []
-    val_indices: List[int] = []
+    train_indices: list[int] = []
+    val_indices: list[int] = []
     for label, idxs in per_class.items():
         idxs = idxs.copy()
         rng.shuffle(idxs)
@@ -449,14 +450,14 @@ def stratified_split(
     return train_indices, val_indices
 
 
-def compute_class_distribution(samples: Sequence[Sample]) -> Dict[str, int]:
+def compute_class_distribution(samples: Sequence[Sample]) -> dict[str, int]:
     """Count the number of samples per class.
 
     Args:
         samples: Sequence of samples to count.
 
     Returns:
-        Dict[str, int]: Mapping from class name to sample count.
+        dict[str, int]: Mapping from class name to sample count.
     """
     counts = {name: 0 for name in CLASS_NAMES}
     for sample in samples:

@@ -6,10 +6,10 @@ import argparse
 import dataclasses
 import json
 import random
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Tuple
+from collections.abc import Mapping, Sequence
+from typing import Optional, Tuple, TypeVar, Union, cast
 
 import jax
 import jax.numpy as jnp
@@ -18,6 +18,18 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.data import AugmentationConfig, DataModuleConfig
 from src.train import TrainingConfig, train_and_evaluate
+
+JSONValue = Union[
+    str,
+    int,
+    float,
+    bool,
+    None,
+    Mapping[str, "JSONValue"],
+    Sequence["JSONValue"],
+]
+SummaryMetrics = Mapping[str, Union[float, None, Mapping[str, Sequence[float]]]]
+T = TypeVar("T")
 
 
 def parse_args() -> argparse.Namespace:
@@ -62,14 +74,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_config(path: Path | None) -> Dict[str, Any]:
+def load_config(path: Path | None) -> dict[str, JSONValue]:
     """Load a JSON configuration file if provided.
 
     Args:
         path: Path to the JSON file or ``None``.
 
     Returns:
-        Dict[str, Any]: Parsed configuration dictionary.
+        dict[str, JSONValue]: Parsed configuration dictionary.
 
     Raises:
         FileNotFoundError: If ``path`` does not exist.
@@ -81,9 +93,10 @@ def load_config(path: Path | None) -> Dict[str, Any]:
         raise FileNotFoundError(f"Config file not found at {path}")
     with path.open("r", encoding="utf-8") as fh:
         try:
-            return json.load(fh)
+            loaded = json.load(fh)
         except json.JSONDecodeError as exc:
             raise ValueError(f"Failed to parse JSON config at {path}: {exc}") from exc
+    return cast(dict[str, JSONValue], loaded)
 
 
 class RuntimeAugmentationModel(BaseModel):
@@ -182,7 +195,7 @@ class RuntimeTrainingModel(BaseModel):
         return value
 
 
-def _build_dataclass(cls, raw: Mapping[str, Any]) -> Any:
+def _build_dataclass(cls: type[T], raw: Mapping[str, JSONValue]) -> T:
     """Build a dataclass instance from a raw mapping.
 
     Args:
@@ -190,10 +203,10 @@ def _build_dataclass(cls, raw: Mapping[str, Any]) -> Any:
         raw: Mapping of field names to values.
 
     Returns:
-        Any: Instantiated dataclass.
+        T: Instantiated dataclass of the requested type.
     """
     field_names = {field.name for field in dataclasses.fields(cls)}
-    kwargs: Dict[str, Any] = {}
+    kwargs: dict[str, object] = {}
     for key, value in raw.items():
         if key not in field_names:
             continue
@@ -207,18 +220,15 @@ def _build_dataclass(cls, raw: Mapping[str, Any]) -> Any:
 
 
 def resolve_configs(args: argparse.Namespace) -> TrainingConfig:
-    """Resolve CLI arguments and configuration into ``TrainingConfig``.
-
-    Args:
-        args: Parsed command-line arguments.
-
-    Returns:
-        TrainingConfig: Fully populated training configuration.
-    """
+    """Resolve CLI arguments and configuration into ``TrainingConfig``."""
     raw_config = load_config(args.config)
 
-    payload: Dict[str, Any] = dict(raw_config)
-    data_payload: Dict[str, Any] = dict(payload.get("data", {}))
+    payload: dict[str, object] = dict(raw_config)
+    data_payload_raw = payload.get("data", {})
+    if isinstance(data_payload_raw, Mapping):
+        data_payload: dict[str, object] = dict(data_payload_raw)
+    else:
+        data_payload = {}
     payload["data"] = data_payload
 
     if args.output_dir is not None:
@@ -251,7 +261,7 @@ def resolve_configs(args: argparse.Namespace) -> TrainingConfig:
         else config_model.seed or config_model.data.seed
     )
 
-    data_dict = config_model.data.model_dump()
+    data_dict = cast(dict[str, JSONValue], config_model.data.model_dump())
     data_dict["seed"] = training_seed
     data_dict["batch_size"] = config_model.batch_size
     if data_dict.get("augmentation") is not None:
@@ -300,37 +310,31 @@ def prepare_environment(seed: int) -> None:
     jax.random.PRNGKey(seed)
 
 
-def to_serializable(obj: Any) -> Any:
-    """Convert complex objects into JSON-serializable structures.
-
-    Args:
-        obj: Object to serialize.
-
-    Returns:
-        Any: JSON-compatible representation.
-    """
+def to_serializable(obj: object) -> JSONValue:
+    """Convert complex objects into JSON-serializable structures."""
     if isinstance(obj, Path):
         return str(obj)
-    if isinstance(obj, (np.floating, np.integer)):
-        return obj.item()
-    if isinstance(obj, (jnp.generic,)):
+    if isinstance(obj, (np.floating, np.integer, jnp.generic)):
         return obj.item()
     if isinstance(obj, (np.ndarray, jnp.ndarray)):
         data = obj.tolist()
-        if isinstance(data, (list, tuple)):
-            return [to_serializable(v) for v in data]
+        if isinstance(data, Sequence) and not isinstance(data, (str, bytes)):
+            return cast(JSONValue, [to_serializable(v) for v in data])
         return to_serializable(data)
     if dataclasses.is_dataclass(obj):
-        return {k: to_serializable(v) for k, v in asdict(obj).items()}
-    if isinstance(obj, dict):
-        return {k: to_serializable(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [to_serializable(v) for v in obj]
-    return obj
+        field_values = {
+            field.name: getattr(obj, field.name) for field in dataclasses.fields(obj)
+        }
+        return cast(JSONValue, {k: to_serializable(v) for k, v in field_values.items()})
+    if isinstance(obj, Mapping):
+        return cast(JSONValue, {k: to_serializable(v) for k, v in obj.items()})
+    if isinstance(obj, Sequence) and not isinstance(obj, (str, bytes)):
+        return cast(JSONValue, [to_serializable(v) for v in obj])
+    return cast(JSONValue, obj)
 
 
 def persist_artifacts(
-    output_dir: Path, config: TrainingConfig, metrics: Dict[str, Any]
+    output_dir: Path, config: TrainingConfig, metrics: Mapping[str, JSONValue]
 ) -> None:
     """Write resolved configuration and metrics to disk.
 
@@ -346,24 +350,25 @@ def persist_artifacts(
         json.dump(to_serializable(metrics), fh, indent=2)
 
 
-def summarize(metrics: Dict[str, Any]) -> str:
-    """Create a human-readable summary of key metrics.
+def summarize(metrics: SummaryMetrics) -> str:
+    """Create a human-readable summary of key metrics."""
 
-    Args:
-        metrics: Dictionary of summary statistics.
+    def _metric_value(
+        value: Union[float, None, Mapping[str, Sequence[float]]],
+    ) -> float:
+        if isinstance(value, Mapping) or value is None:
+            return float("nan")
+        return float(value)
 
-    Returns:
-        str: Human-readable summary string.
-    """
     summary_lines = [
-        f"Final train loss:     {metrics.get('train_loss', float('nan')):.4f}",
-        f"Final train accuracy: {metrics.get('train_accuracy', float('nan')):.4f}",
-        f"Final val loss:       {metrics.get('val_loss', float('nan')):.4f}",
-        f"Final val accuracy:   {metrics.get('val_accuracy', float('nan')):.4f}",
+        f"Final train loss:     {_metric_value(metrics.get('train_loss')):.4f}",
+        f"Final train accuracy: {_metric_value(metrics.get('train_accuracy')):.4f}",
+        f"Final val loss:       {_metric_value(metrics.get('val_loss')):.4f}",
+        f"Final val accuracy:   {_metric_value(metrics.get('val_accuracy')):.4f}",
     ]
     test_acc = metrics.get("test_accuracy")
-    if test_acc is not None:
-        summary_lines.append(f"Test accuracy:         {test_acc:.4f}")
+    if test_acc is not None and not isinstance(test_acc, Mapping):
+        summary_lines.append(f"Test accuracy:         {float(test_acc):.4f}")
     return "\n".join(summary_lines)
 
 

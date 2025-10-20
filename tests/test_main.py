@@ -6,7 +6,6 @@ import json
 import random
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict
 
 import jax.numpy as jnp
 import numpy as np
@@ -126,7 +125,7 @@ def test_persist_artifacts_and_summarize(tmp_path: Path) -> None:
         data=DataModuleConfig(data_dir=tmp_path, batch_size=2),
         output_dir=tmp_path / "artifacts",
     )
-    metrics: Dict[str, Any] = {
+    metrics: dict[str, float] = {
         "train_loss": 0.1,
         "train_accuracy": 0.9,
         "val_loss": 0.2,
@@ -166,7 +165,7 @@ def test_resolve_configs_and_main_entry(
     assert training_config.data.seed == 99
     assert training_config.output_dir.parent == output_dir
 
-    def fake_train_and_evaluate(cfg: TrainingConfig) -> Dict[str, Any]:
+    def fake_train_and_evaluate(cfg: TrainingConfig) -> dict[str, float]:
         assert cfg.seed == 99
         return {
             "train_loss": 0.1,
@@ -226,7 +225,7 @@ def test_resolve_configs_applies_overrides_and_augmentation(tmp_path: Path) -> N
 
 def test_to_serializable_numpy_and_jax_scalars() -> None:
     """Test serialization for numpy and jax scalar types."""
-    payload: Dict[str, Any] = {
+    payload: dict[str, object] = {
         "numpy_float": np.float32(1.25),
         "numpy_int": np.int32(7),
         "jax_scalar": jnp.float32(3.5),
@@ -286,9 +285,9 @@ def test_main_entrypoint_executes(
 
     import src.train as train_module
 
-    calls: Dict[str, Any] = {}
+    calls: dict[str, TrainingConfig] = {}
 
-    def fake_train_and_evaluate(cfg: TrainingConfig) -> Dict[str, Any]:
+    def fake_train_and_evaluate(cfg: TrainingConfig) -> dict[str, float]:
         calls["config"] = cfg
         return {
             "train_loss": 0.0,
@@ -304,3 +303,34 @@ def test_main_entrypoint_executes(
     captured = capsys.readouterr()
     assert "Final train loss" in captured.out or captured.out == ""
     assert "config" in calls
+
+
+def test_resolve_configs_handles_non_mapping_data(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"data": []}))
+    output_dir = tmp_path / "runs"
+
+    args = SimpleNamespace(
+        config=config_path,
+        output_dir=output_dir,
+        resume=None,
+        seed=None,
+        num_epochs=None,
+        experiment_name=None,
+    )
+
+    training_config = main.resolve_configs(args)
+    assert training_config.data.data_dir.name == "data"
+    assert training_config.output_dir.parent == output_dir
+
+
+def test_summarize_with_missing_metrics() -> None:
+    summary = main.summarize(
+        {
+            "train_loss": None,
+            "train_accuracy": 0.5,
+            "val_loss": 0.3,
+            "val_accuracy": None,
+        }
+    )
+    assert "Final train loss" in summary

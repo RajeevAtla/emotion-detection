@@ -7,7 +7,7 @@ import math
 import warnings
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, cast
+from typing import cast
 
 import jax
 import jax.numpy as jnp
@@ -122,7 +122,7 @@ def test_create_train_state_without_freeze(tmp_path: Path) -> None:
 
 
 def _dummy_apply_fn(
-    variables: Dict[str, Any],
+    variables: dict[str, object],
     images: jnp.ndarray,
     *,
     train: bool,
@@ -158,7 +158,7 @@ class DummyModel:
 
     @staticmethod
     def apply(
-        variables: Dict[str, Any],
+        variables: dict[str, object],
         images: jnp.ndarray,
         *,
         train: bool,
@@ -421,7 +421,7 @@ def test_train_and_evaluate_with_stubs(monkeypatch, tmp_path: Path) -> None:
 
 def test_build_eval_step_mixed_precision_casts() -> None:
     """Test mixed precision evaluation casting behavior."""
-    record: Dict[str, jnp.dtype] = {}
+    record: dict[str, jnp.dtype] = {}
 
     class MixedModel:
         """Stub model capturing the dtype of evaluation inputs."""
@@ -430,7 +430,7 @@ def test_build_eval_step_mixed_precision_casts() -> None:
 
         @staticmethod
         def apply(
-            variables: Dict[str, Any],
+            variables: dict[str, object],
             images: jnp.ndarray,
             *,
             train: bool,
@@ -467,7 +467,7 @@ def test_predict_batches_mixed_precision_casts() -> None:
 
         @staticmethod
         def apply(
-            variables: Dict[str, Any],
+            variables: dict[str, object],
             images: jnp.ndarray,
             *,
             train: bool,
@@ -606,3 +606,36 @@ def test_train_and_evaluate_handles_restore_and_empty_metrics(
     metrics = train_and_evaluate(config)
     assert math.isnan(metrics["history"]["train_loss"][0])
     assert math.isnan(metrics["history"]["val_loss"][0])
+
+
+def test_build_train_step_handles_extended_dynamic_scale(monkeypatch) -> None:
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=Path(".")),
+        output_dir=Path("out"),
+        use_mixed_precision=True,
+    )
+    model = cast(ResNet, DummyModel())
+    train_step = build_train_step(model, config, class_weights=None)
+
+    class ExtendedDynamicScale:
+        def value_and_grad(self, fn, has_aux):
+            def wrapper(params):
+                loss_aux = fn(params)
+                grads = jax.tree_util.tree_map(jnp.zeros_like, params)
+                return self, jnp.array(True), (loss_aux[0], loss_aux[1]), grads
+
+            return wrapper
+
+        @property
+        def loss_scale(self) -> jnp.ndarray:
+            return jnp.array(1.0)
+
+    state = _make_train_state()
+    state = state.replace(dynamic_scale=ExtendedDynamicScale())
+    images = jnp.ones((1, 2, 2, 1))
+    labels = jnp.zeros((1,), dtype=jnp.int32)
+    jax.config.update("jax_disable_jit", True)
+    try:
+        train_step(state, (images, labels), jax.random.PRNGKey(0))
+    finally:
+        jax.config.update("jax_disable_jit", False)

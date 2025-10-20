@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import math
 import shutil
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Tuple, cast
+from typing import Callable, Optional, Tuple, TypeAlias, Union, cast
 
 import jax
 import jax.numpy as jnp
@@ -26,6 +27,21 @@ from src.model import (
     create_resnet,
     maybe_load_pretrained_params,
 )
+
+ArrayLike: TypeAlias = Union[jax.Array, jnp.ndarray]
+ArrayTree: TypeAlias = Union[
+    ArrayLike, Mapping[str, "ArrayTree"], Sequence["ArrayTree"]
+]
+BoolTree: TypeAlias = Union[bool, Mapping[str, "BoolTree"]]
+TrainBatch = Tuple[jnp.ndarray, jnp.ndarray]
+TrainStepFn = Callable[
+    ["TrainState", TrainBatch, jax.Array], Tuple["TrainState", dict[str, jnp.ndarray]]
+]
+EvalStepFn = Callable[
+    ["TrainState", TrainBatch], Tuple[dict[str, jnp.ndarray], jnp.ndarray]
+]
+TrainingHistory = dict[str, list[float]]
+TrainingSummary = dict[str, Union[float, None, TrainingHistory]]
 
 
 @dataclass
@@ -97,7 +113,7 @@ class TrainingConfig:
 class TrainState(train_state.TrainState):
     """TrainState with batch statistics and optional dynamic loss scaling."""
 
-    batch_stats: FrozenDict[str, Any]
+    batch_stats: FrozenDict[str, ArrayTree]
     dynamic_scale: Optional[DynamicScale] = None
 
 
@@ -140,7 +156,7 @@ def create_learning_rate_schedule(
 def create_optimizer(
     config: TrainingConfig,
     lr_schedule: optax.Schedule,
-    mask: Optional[FrozenDict] = None,
+    mask: Optional[FrozenDict[str, BoolTree]] = None,
 ) -> optax.GradientTransformation:
     """Create the optimizer transformation for training.
 
@@ -197,9 +213,9 @@ def create_train_state(
             ),
         )
 
-    mask_tree = None
+    mask_tree: Optional[FrozenDict[str, BoolTree]] = None
     if config.freeze_stem or config.freeze_classifier or config.frozen_stages:
-        mask_tree = build_finetune_mask(
+        mask_tree_result = build_finetune_mask(
             {"params": params},
             config=replace(
                 model.config,
@@ -207,8 +223,8 @@ def create_train_state(
                 freeze_classifier=config.freeze_classifier,
                 frozen_stages=config.frozen_stages,
             ),
-        )["params"]
-        mask_tree = freeze(mask_tree)
+        )
+        mask_tree = cast(FrozenDict[str, BoolTree], mask_tree_result["params"])
 
     optimizer = create_optimizer(config, lr_schedule, mask_tree)
     dynamic_scale = DynamicScale() if config.use_mixed_precision else None
@@ -296,20 +312,16 @@ def build_train_step(
     model: ResNet,
     config: TrainingConfig,
     class_weights: Optional[jnp.ndarray],
-):
-    """Create a jit-compiled training step function.
+) -> TrainStepFn:
+    """Create a jit-compiled training step function."""
 
-    Args:
-        model: ResNet module to evaluate.
-        config: Training configuration controlling behaviors.
-        class_weights: Optional class weights applied to the loss.
-
-    Returns:
-        Callable: A function executing a single training step.
-    """
-
-    def loss_fn(params, batch_stats, images, labels, rng):
-        """Compute loss and metrics for a single batch."""
+    def loss_fn(
+        params: FrozenDict[str, ArrayTree],
+        batch_stats: FrozenDict[str, ArrayTree],
+        images: jnp.ndarray,
+        labels: jnp.ndarray,
+        rng: jax.Array,
+    ) -> tuple[jnp.ndarray, tuple[dict[str, jnp.ndarray], Mapping[str, ArrayTree]]]:
         variables = {"params": params, "batch_stats": batch_stats}
         logits, new_model_state = model.apply(
             variables,
@@ -329,15 +341,15 @@ def build_train_step(
             predictions=jnp.argmax(logits, axis=-1),
             labels=labels,
         ).compute()
-        metrics = {
+        metrics: dict[str, jnp.ndarray] = {
             "loss": loss,
             "accuracy": accuracy,
         }
-        return loss, (metrics, new_model_state)
+        return loss, (metrics, cast(Mapping[str, ArrayTree], new_model_state))
 
     def train_step(
-        state: TrainState, batch: Tuple[jnp.ndarray, jnp.ndarray], rng: jax.Array
-    ) -> Tuple[TrainState, Dict[str, jnp.ndarray]]:
+        state: TrainState, batch: TrainBatch, rng: jax.Array
+    ) -> Tuple[TrainState, dict[str, jnp.ndarray]]:
         """Execute one optimizer update using the provided batch."""
         images, labels = batch
         if config.use_mixed_precision:
@@ -346,23 +358,42 @@ def build_train_step(
             images = images.astype(jnp.float32)
 
         if config.use_mixed_precision and state.dynamic_scale is not None:
-            dynamic_scale = cast(Any, state.dynamic_scale)
+            dynamic_scale = state.dynamic_scale
 
-            def scaled_loss_fn(params):
+            def scaled_loss_fn(params: FrozenDict[str, ArrayTree]):
                 loss, (metrics, new_model_state) = loss_fn(
                     params, state.batch_stats, images, labels, rng
                 )
-                return dynamic_scale.scale(loss), (metrics, new_model_state)  # type: ignore[call-arg]
+                return loss, (metrics, new_model_state)
 
             grad_fn = dynamic_scale.value_and_grad(scaled_loss_fn, has_aux=True)
-            (_, (metrics, new_model_state)), grads = grad_fn(state.params)
-            loss_scale = getattr(dynamic_scale, "loss_scale", jnp.array(1.0))
-            grads = jax.tree_util.tree_map(lambda g: g / loss_scale, grads)
+            result = grad_fn(state.params)
+            if isinstance(result, tuple) and len(result) == 4:
+                new_dynamic_scale, is_finite, (_, (metrics, new_model_state)), grads = (
+                    result
+                )
+            else:
+                (_, (metrics, new_model_state)), grads = cast(
+                    tuple[
+                        tuple[
+                            jnp.ndarray,
+                            tuple[dict[str, jnp.ndarray], Mapping[str, ArrayTree]],
+                        ],
+                        ArrayTree,
+                    ],
+                    result,
+                )
+                new_dynamic_scale = dynamic_scale
+                is_finite = jnp.array(True, dtype=jnp.bool_)
+            loss_scale = getattr(new_dynamic_scale, "loss_scale", jnp.array(1.0))
+            grads = jax.tree_util.tree_map(
+                lambda g: jnp.where(is_finite, g / loss_scale, g), grads
+            )
             state = state.apply_gradients(
                 grads=grads,
                 batch_stats=new_model_state["batch_stats"],
             )
-            state = state.replace(dynamic_scale=dynamic_scale)
+            state = state.replace(dynamic_scale=new_dynamic_scale)
             return state, metrics
 
         grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
@@ -382,20 +413,12 @@ def build_train_step(
     return jax.jit(train_step)
 
 
-def build_eval_step(model: ResNet, config: TrainingConfig):
-    """Create a JIT-compiled evaluation function.
-
-    Args:
-        model: ResNet module to evaluate.
-        config: Training configuration controlling behaviors.
-
-    Returns:
-        Callable: Function computing evaluation metrics for a batch.
-    """
+def build_eval_step(model: ResNet, config: TrainingConfig) -> EvalStepFn:
+    """Create a JIT-compiled evaluation function."""
 
     def eval_step(
-        state: TrainState, batch: Tuple[jnp.ndarray, jnp.ndarray]
-    ) -> Tuple[Dict[str, jnp.ndarray], jnp.ndarray]:
+        state: TrainState, batch: TrainBatch
+    ) -> Tuple[dict[str, jnp.ndarray], jnp.ndarray]:
         """Evaluate a batch and return metrics and predictions."""
         images, labels = batch
         if config.use_mixed_precision:
@@ -412,7 +435,7 @@ def build_eval_step(model: ResNet, config: TrainingConfig):
             label_smoothing=config.label_smoothing,
         )
         preds = jnp.argmax(logits, axis=-1)
-        metrics = {
+        metrics: dict[str, jnp.ndarray] = {
             "loss": loss,
             "accuracy": mx.Accuracy.from_model_output(
                 predictions=preds,
@@ -454,7 +477,7 @@ def save_checkpoint(state: TrainState, config: TrainingConfig, epoch: int) -> No
 
 def maybe_restore_checkpoint(
     config: TrainingConfig, state: TrainState
-) -> Optional[Dict[str, Any]]:
+) -> Optional[dict[str, ArrayTree]]:
     """Restore a checkpoint if ``resume_checkpoint`` is specified.
 
     Args:
@@ -462,7 +485,7 @@ def maybe_restore_checkpoint(
         state: Current training state providing structure for restoration.
 
     Returns:
-        Optional[Dict[str, Any]]: Restored checkpoint payload or ``None``.
+        Optional[dict[str, ArrayTree]]: Restored checkpoint payload or ``None``.
     """
     if config.resume_checkpoint is None:
         return None
@@ -474,9 +497,10 @@ def maybe_restore_checkpoint(
         "dynamic_scale": state.dynamic_scale,
     }
     restore_args = ocp.args.PyTreeRestore(item=template)
-    return checkpointer.restore(
+    restored = checkpointer.restore(
         str(config.resume_checkpoint), item=template, restore_args=restore_args
     )
+    return cast(Optional[dict[str, ArrayTree]], restored)
 
 
 def predict_batches(
@@ -514,14 +538,14 @@ def predict_batches(
     return jnp.concatenate(preds, axis=0), jnp.concatenate(labels_list, axis=0)
 
 
-def train_and_evaluate(config: TrainingConfig) -> Dict[str, Any]:
+def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
     """Run the full training, validation, and test evaluation pipeline.
 
     Args:
         config: Training configuration describing the experiment.
 
     Returns:
-        Dict[str, Any]: Metrics summarizing the training run.
+        TrainingSummary: Metrics summarizing the training run.
     """
 
     rng = jax.random.PRNGKey(config.seed)
@@ -558,7 +582,7 @@ def train_and_evaluate(config: TrainingConfig) -> Dict[str, Any]:
 
     writer = SummaryWriter(log_dir=str(config.output_dir / "tensorboard"))
     best_val_loss = jnp.inf
-    history: Dict[str, list[float]] = {
+    history: TrainingHistory = {
         "train_loss": [],
         "train_accuracy": [],
         "val_loss": [],
