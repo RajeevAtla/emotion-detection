@@ -54,10 +54,15 @@ def test_validate_scale_range_direct_calls() -> None:
     """Test the scale range validator when invoked directly."""
     with pytest.raises(ValueError):
         main.RuntimeAugmentationModel.validate_scale_range((0.8,))
-    assert main.RuntimeAugmentationModel.validate_scale_range((0.8, 1.2)) == (0.8, 1.2)
+    assert main.RuntimeAugmentationModel.validate_scale_range((0.8, 1.2)) == (
+        0.8,
+        1.2,
+    )
 
 
-def test_runtime_training_model_rejects_invalid_frozen_stage(tmp_path: Path) -> None:
+def test_runtime_training_model_rejects_invalid_frozen_stage(
+    tmp_path: Path,
+) -> None:
     """Test that zero-stage entries are rejected by the training schema."""
     payload = {
         "data": {"data_dir": tmp_path},
@@ -67,7 +72,9 @@ def test_runtime_training_model_rejects_invalid_frozen_stage(tmp_path: Path) -> 
         main.RuntimeTrainingModel.model_validate(payload)
 
 
-def test_runtime_training_model_accepts_valid_frozen_stages(tmp_path: Path) -> None:
+def test_runtime_training_model_accepts_valid_frozen_stages(
+    tmp_path: Path,
+) -> None:
     """Test that positive frozen stages are accepted."""
     payload = {
         "data": {"data_dir": tmp_path},
@@ -193,7 +200,9 @@ def test_resolve_configs_and_main_entry(
     assert "Final train loss" in captured.out
 
 
-def test_resolve_configs_applies_overrides_and_augmentation(tmp_path: Path) -> None:
+def test_resolve_configs_applies_overrides_and_augmentation(
+    tmp_path: Path,
+) -> None:
     """Test CLI overrides for resume, epochs, and augmentation payloads."""
     dataset_dir = tmp_path / "data"
     dataset_dir.mkdir()
@@ -280,7 +289,13 @@ def test_main_entrypoint_executes(
 
     monkeypatch.setattr(
         "sys.argv",
-        ["prog", "--config", str(config_path), "--output-dir", str(output_dir)],
+        [
+            "prog",
+            "--config",
+            str(config_path),
+            "--output-dir",
+            str(output_dir),
+        ],
     )
 
     import src.train as train_module
@@ -296,7 +311,9 @@ def test_main_entrypoint_executes(
             "val_accuracy": 1.0,
         }
 
-    monkeypatch.setattr(train_module, "train_and_evaluate", fake_train_and_evaluate)
+    monkeypatch.setattr(
+        train_module, "train_and_evaluate", fake_train_and_evaluate
+    )
     monkeypatch.setattr(main, "train_and_evaluate", fake_train_and_evaluate)
 
     main.main()

@@ -76,9 +76,13 @@ Training outputs:
 All automation uses uv:
 ```bash
 uv tool run ruff check
+uv tool run ruff format
 uv tool run ty check src
 uv run pytest --cov=src
 ```
+
+Ruff enforces a 79-character max line length.
+Run `uv tool run ruff format` before committing to keep the repo consistent.
 
 These mirror the GitHub Actions workflow located in `.github/workflows/ci.yml`.
 

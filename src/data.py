@@ -31,7 +31,9 @@ CLASS_NAMES: Tuple[str, ...] = (
     "sad",
     "surprised",
 )
-CLASS_TO_INDEX: dict[str, int] = {name: idx for idx, name in enumerate(CLASS_NAMES)}
+CLASS_TO_INDEX: dict[str, int] = {
+    name: idx for idx, name in enumerate(CLASS_NAMES)
+}
 IMAGE_EXTENSIONS: Tuple[str, ...] = (".png", ".jpg", ".jpeg")
 DEFAULT_STATS_FILENAME = "stats_train.json"
 
@@ -79,7 +81,9 @@ class AugmentationConfig:
         lo = max(0.1, float(lo))
         hi = max(lo, float(hi))
         return AugmentationConfig(
-            horizontal_flip_prob=float(np.clip(self.horizontal_flip_prob, 0.0, 1.0)),
+            horizontal_flip_prob=float(
+                np.clip(self.horizontal_flip_prob, 0.0, 1.0)
+            ),
             rotation_degrees=float(max(0.0, self.rotation_degrees)),
             scale_range=(lo, hi),
             elastic_blur_sigma=self.elastic_blur_sigma
@@ -204,8 +208,14 @@ class EmotionDataModule:
         self._val_samples = [train_samples[i] for i in val_indices]
         self._test_samples = test_samples
 
-        stats_cache = cfg.stats_cache_path or cfg.data_dir / DEFAULT_STATS_FILENAME
-        if cfg.mean is not None and cfg.std is not None and not force_recompute_stats:
+        stats_cache = (
+            cfg.stats_cache_path or cfg.data_dir / DEFAULT_STATS_FILENAME
+        )
+        if (
+            cfg.mean is not None
+            and cfg.std is not None
+            and not force_recompute_stats
+        ):
             derived_stats = DatasetStats(
                 mean=float(cfg.mean), std=float(cfg.std), num_pixels=0
             )
@@ -328,7 +338,9 @@ class EmotionDataModule:
             return iter(())
 
         batch_size = batch_size or self.config.batch_size
-        drop_last = drop_last if drop_last is not None else self.config.drop_last
+        drop_last = (
+            drop_last if drop_last is not None else self.config.drop_last
+        )
 
         rng = np.random.default_rng(
             rng_seed if rng_seed is not None else self.config.seed
@@ -351,11 +363,15 @@ class EmotionDataModule:
                 image = image.astype(np.float32) / 255.0
                 if augment and aug_cfg.enabled:
                     image = apply_augmentations(image, rng, aug_cfg)
-                image = normalize_image(image, self.config.mean, self.config.std)
+                image = normalize_image(
+                    image, self.config.mean, self.config.std
+                )
                 images.append(image)
                 labels.append(sample.label)
 
-            batch_images = jnp.asarray(np.stack(images, axis=0), dtype=jnp.float32)
+            batch_images = jnp.asarray(
+                np.stack(images, axis=0), dtype=jnp.float32
+            )
             batch_labels = jnp.asarray(np.array(labels, dtype=np.int32))
             yield batch_images, batch_labels
 
@@ -465,7 +481,9 @@ def compute_class_distribution(samples: Sequence[Sample]) -> dict[str, int]:
     return counts
 
 
-def compute_class_weights(samples: Sequence[Sample], num_classes: int) -> jnp.ndarray:
+def compute_class_weights(
+    samples: Sequence[Sample], num_classes: int
+) -> jnp.ndarray:
     """Derive class-balanced weights for loss scaling.
 
     Args:
@@ -522,7 +540,9 @@ def compute_dataset_statistics(
     mean = pixel_sum / total_pixels
     variance = max(pixel_sq_sum / total_pixels - mean**2, 1e-12)
     std = math.sqrt(variance)
-    stats = DatasetStats(mean=float(mean), std=float(std), num_pixels=int(total_pixels))
+    stats = DatasetStats(
+        mean=float(mean), std=float(std), num_pixels=int(total_pixels)
+    )
 
     if cache_path is not None:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -560,7 +580,9 @@ def apply_augmentations(
         augmented = augmented[:, ::-1, :]
 
     if aug_cfg.rotation_degrees > 0.0:
-        angle = float(rng.uniform(-aug_cfg.rotation_degrees, aug_cfg.rotation_degrees))
+        angle = float(
+            rng.uniform(-aug_cfg.rotation_degrees, aug_cfg.rotation_degrees)
+        )
         if abs(angle) > 1e-3:
             rotated = _rotate_image(augmented[..., 0], angle)
             augmented = rotated[..., None]
@@ -568,7 +590,11 @@ def apply_augmentations(
     if aug_cfg.elastic_blur_sigma is not None:
         augmented = gaussian_filter(
             augmented,
-            sigma=(aug_cfg.elastic_blur_sigma, aug_cfg.elastic_blur_sigma, 0.0),
+            sigma=(
+                aug_cfg.elastic_blur_sigma,
+                aug_cfg.elastic_blur_sigma,
+                0.0,
+            ),
             mode="reflect",
         )
 
@@ -677,6 +703,8 @@ def _rotate_image(image: np.ndarray, angle: float) -> np.ndarray:
     Returns:
         np.ndarray: Rotated image array.
     """
-    pil_img = Image.fromarray((np.clip(image, 0.0, 1.0) * 255).astype(np.uint8))
+    pil_img = Image.fromarray(
+        (np.clip(image, 0.0, 1.0) * 255).astype(np.uint8)
+    )
     rotated = pil_img.rotate(angle, resample=RESAMPLE_BILINEAR, fillcolor=0)
     return np.asarray(rotated, dtype=np.float32) / 255.0

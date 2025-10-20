@@ -35,7 +35,8 @@ ArrayTree: TypeAlias = Union[
 BoolTree: TypeAlias = Union[bool, Mapping[str, "BoolTree"]]
 TrainBatch = Tuple[jnp.ndarray, jnp.ndarray]
 TrainStepFn = Callable[
-    ["TrainState", TrainBatch, jax.Array], Tuple["TrainState", dict[str, jnp.ndarray]]
+    ["TrainState", TrainBatch, jax.Array],
+    Tuple["TrainState", dict[str, jnp.ndarray]],
 ]
 EvalStepFn = Callable[
     ["TrainState", TrainBatch], Tuple[dict[str, jnp.ndarray], jnp.ndarray]
@@ -144,7 +145,9 @@ def create_learning_rate_schedule(
     def schedule(step: int) -> jnp.ndarray:
         step_f = jnp.asarray(step, dtype=jnp.float32)
         warmup_progress = jnp.minimum(1.0, step_f / warmup_steps_f)
-        cosine_progress = jnp.clip((step_f - warmup_steps_f) / decay_steps_f, 0.0, 1.0)
+        cosine_progress = jnp.clip(
+            (step_f - warmup_steps_f) / decay_steps_f, 0.0, 1.0
+        )
         cosine_value = 0.5 * (1.0 + jnp.cos(jnp.pi * cosine_progress))
         decay_lr = min_lr + (peak_lr - min_lr) * cosine_value
         warmup_lr = peak_lr * warmup_progress
@@ -175,7 +178,9 @@ def create_optimizer(
     if config.gradient_accumulation_steps > 1:
         tx = cast(
             optax.GradientTransformation,
-            optax.MultiSteps(tx, every_k_schedule=config.gradient_accumulation_steps),
+            optax.MultiSteps(
+                tx, every_k_schedule=config.gradient_accumulation_steps
+            ),
         )
     if mask is not None:
         tx = cast(optax.GradientTransformation, optax.masked(tx, mask))
@@ -199,7 +204,9 @@ def create_train_state(
     Returns:
         TrainState: Populated training state ready for training.
     """
-    example = jnp.zeros((1, 48, 48, model.config.input_channels), dtype=jnp.float32)
+    example = jnp.zeros(
+        (1, 48, 48, model.config.input_channels), dtype=jnp.float32
+    )
     variables = model.init(rng, example, train=True)
     params = variables["params"]
     batch_stats = variables.get("batch_stats", freeze({}))
@@ -321,7 +328,9 @@ def build_train_step(
         images: jnp.ndarray,
         labels: jnp.ndarray,
         rng: jax.Array,
-    ) -> tuple[jnp.ndarray, tuple[dict[str, jnp.ndarray], Mapping[str, ArrayTree]]]:
+    ) -> tuple[
+        jnp.ndarray, tuple[dict[str, jnp.ndarray], Mapping[str, ArrayTree]]
+    ]:
         variables = {"params": params, "batch_stats": batch_stats}
         logits, new_model_state = model.apply(
             variables,
@@ -366,18 +375,25 @@ def build_train_step(
                 )
                 return loss, (metrics, new_model_state)
 
-            grad_fn = dynamic_scale.value_and_grad(scaled_loss_fn, has_aux=True)
+            grad_fn = dynamic_scale.value_and_grad(
+                scaled_loss_fn, has_aux=True
+            )
             result = grad_fn(state.params)
             if isinstance(result, tuple) and len(result) == 4:
-                new_dynamic_scale, is_finite, (_, (metrics, new_model_state)), grads = (
-                    result
-                )
+                (
+                    new_dynamic_scale,
+                    is_finite,
+                    (_, (metrics, new_model_state)),
+                    grads,
+                ) = result
             else:
                 (_, (metrics, new_model_state)), grads = cast(
                     tuple[
                         tuple[
                             jnp.ndarray,
-                            tuple[dict[str, jnp.ndarray], Mapping[str, ArrayTree]],
+                            tuple[
+                                dict[str, jnp.ndarray], Mapping[str, ArrayTree]
+                            ],
                         ],
                         ArrayTree,
                     ],
@@ -385,7 +401,9 @@ def build_train_step(
                 )
                 new_dynamic_scale = dynamic_scale
                 is_finite = jnp.array(True, dtype=jnp.bool_)
-            loss_scale = getattr(new_dynamic_scale, "loss_scale", jnp.array(1.0))
+            loss_scale = getattr(
+                new_dynamic_scale, "loss_scale", jnp.array(1.0)
+            )
             grads = jax.tree_util.tree_map(
                 lambda g: jnp.where(is_finite, g / loss_scale, g), grads
             )
@@ -427,7 +445,8 @@ def build_eval_step(model: ResNet, config: TrainingConfig) -> EvalStepFn:
             images = images.astype(jnp.float32)
         variables = {"params": state.params, "batch_stats": state.batch_stats}
         logits = cast(
-            jnp.ndarray, model.apply(variables, images, train=False, mutable=False)
+            jnp.ndarray,
+            model.apply(variables, images, train=False, mutable=False),
         )
         loss = cross_entropy_loss(
             logits,
@@ -447,7 +466,9 @@ def build_eval_step(model: ResNet, config: TrainingConfig) -> EvalStepFn:
     return jax.jit(eval_step)
 
 
-def save_checkpoint(state: TrainState, config: TrainingConfig, epoch: int) -> None:
+def save_checkpoint(
+    state: TrainState, config: TrainingConfig, epoch: int
+) -> None:
     """Persist the current training state to disk.
 
     Args:
@@ -466,7 +487,9 @@ def save_checkpoint(state: TrainState, config: TrainingConfig, epoch: int) -> No
     checkpointer = ocp.PyTreeCheckpointer()
     target_path = ckpt_dir / f"epoch_{epoch:04d}"
     save_args = ocp.args.PyTreeSave(payload)
-    checkpointer.save(str(target_path), payload, save_args=save_args, force=True)
+    checkpointer.save(
+        str(target_path), payload, save_args=save_args, force=True
+    )
 
     existing = sorted(ckpt_dir.glob("epoch_*"))
     excess = len(existing) - config.max_checkpoints
@@ -529,7 +552,8 @@ def predict_batches(
             images = images.astype(jnp.float32)
         variables = {"params": state.params, "batch_stats": state.batch_stats}
         logits = cast(
-            jnp.ndarray, model.apply(variables, images, train=False, mutable=False)
+            jnp.ndarray,
+            model.apply(variables, images, train=False, mutable=False),
         )
         preds.append(jnp.argmax(logits, axis=-1))
         labels_list.append(labels)
@@ -575,7 +599,9 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
             params=restored_state["params"],
             batch_stats=restored_state.get("batch_stats", state.batch_stats),
             opt_state=restored_state.get("opt_state", state.opt_state),
-            dynamic_scale=restored_state.get("dynamic_scale", state.dynamic_scale),
+            dynamic_scale=restored_state.get(
+                "dynamic_scale", state.dynamic_scale
+            ),
         )
     train_step = build_train_step(model, config, class_weights=class_weights)
     eval_step = build_eval_step(model, config)
@@ -631,7 +657,9 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
         val_metrics = []
         val_preds_list = []
         val_labels_list = []
-        for images, labels in data_module.val_batches(batch_size=config.batch_size):
+        for images, labels in data_module.val_batches(
+            batch_size=config.batch_size
+        ):
             metrics_dict, preds = eval_step(state, (images, labels))
             val_metrics.append(metrics_dict)
             val_preds_list.append(preds)
@@ -678,7 +706,9 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
         history["val_loss"].append(epoch_val_loss)
         history["val_accuracy"].append(epoch_val_acc)
 
-        improved = not math.isnan(epoch_val_loss) and epoch_val_loss < best_val_loss
+        improved = (
+            not math.isnan(epoch_val_loss) and epoch_val_loss < best_val_loss
+        )
         if improved:
             best_val_loss = epoch_val_loss
             epochs_without_improvement = 0

@@ -84,7 +84,9 @@ def test_create_optimizer_with_mask_and_accum() -> None:
     assert hasattr(opt_state, "inner_state")
 
 
-def test_create_train_state_with_pretrained(monkeypatch, tmp_path: Path) -> None:
+def test_create_train_state_with_pretrained(
+    monkeypatch, tmp_path: Path
+) -> None:
     """Test train state initialization when loading pretrained checkpoints."""
     config = TrainingConfig(
         data=DataModuleConfig(data_dir=tmp_path),
@@ -100,7 +102,9 @@ def test_create_train_state_with_pretrained(monkeypatch, tmp_path: Path) -> None
     monkeypatch.setattr(
         train,
         "create_optimizer",
-        lambda *args, **kwargs: SimpleNamespace(init=lambda params: "opt_state"),
+        lambda *args, **kwargs: SimpleNamespace(
+            init=lambda params: "opt_state"
+        ),
     )
     resnet = train.create_resnet(depth=18, num_classes=2)
     schedule = create_learning_rate_schedule(config, steps_per_epoch=1)
@@ -192,7 +196,9 @@ def test_build_train_step_standard() -> None:
     state = _make_train_state()
     images = jnp.ones((2, 2, 2, 1))
     labels = jnp.zeros((2,), dtype=jnp.int32)
-    new_state, metrics = train_step(state, (images, labels), jax.random.PRNGKey(0))
+    new_state, metrics = train_step(
+        state, (images, labels), jax.random.PRNGKey(0)
+    )
     assert metrics["loss"] >= 0
     assert isinstance(new_state, TrainState)
 
@@ -259,7 +265,9 @@ def test_confusion_matrix_helpers() -> None:
 def test_checkpoint_save_and_restore(tmp_path: Path) -> None:
     """Test checkpoint rotation and restoration behavior."""
     config = TrainingConfig(
-        data=DataModuleConfig(data_dir=tmp_path), output_dir=tmp_path, max_checkpoints=2
+        data=DataModuleConfig(data_dir=tmp_path),
+        output_dir=tmp_path,
+        max_checkpoints=2,
     )
     state = _make_train_state()
     save_checkpoint(state, config, epoch=1)
@@ -268,7 +276,8 @@ def test_checkpoint_save_and_restore(tmp_path: Path) -> None:
     assert not (config.output_dir / "checkpoints" / "epoch_0001").exists()
     restored = maybe_restore_checkpoint(
         replace(
-            config, resume_checkpoint=config.output_dir / "checkpoints" / "epoch_0003"
+            config,
+            resume_checkpoint=config.output_dir / "checkpoints" / "epoch_0003",
         ),
         state,
     )
@@ -320,7 +329,10 @@ def test_train_and_evaluate_with_stubs(monkeypatch, tmp_path: Path) -> None:
 
             def generator():
                 yield jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32)
-                yield jnp.ones((1, 2, 2, 1)) * 2, jnp.ones((1,), dtype=jnp.int32)
+                yield (
+                    jnp.ones((1, 2, 2, 1)) * 2,
+                    jnp.ones((1,), dtype=jnp.int32),
+                )
 
             return generator()
 
@@ -375,9 +387,10 @@ def test_train_and_evaluate_with_stubs(monkeypatch, tmp_path: Path) -> None:
 
     def stub_eval_step(state, batch):
         """Return deterministic validation metrics and zero predictions."""
-        return {"loss": val_losses.pop(0), "accuracy": jnp.array(0.9)}, jnp.zeros(
-            batch[0].shape[0], dtype=jnp.int32
-        )
+        return {
+            "loss": val_losses.pop(0),
+            "accuracy": jnp.array(0.9),
+        }, jnp.zeros(batch[0].shape[0], dtype=jnp.int32)
 
     def stub_predict_batches(state, model_obj, batches, config_obj):
         """Return zero-valued predictions and labels."""
@@ -451,7 +464,10 @@ def test_build_eval_step_mixed_precision_casts() -> None:
     state = _make_train_state()
     eval_step(
         state,
-        (jnp.ones((1, 2, 2, 1), dtype=jnp.float32), jnp.zeros((1,), dtype=jnp.int32)),
+        (
+            jnp.ones((1, 2, 2, 1), dtype=jnp.float32),
+            jnp.zeros((1,), dtype=jnp.int32),
+        ),
     )
     assert record["dtype"] == jnp.float16
 
@@ -485,8 +501,14 @@ def test_predict_batches_mixed_precision_casts() -> None:
     )
     state = _make_train_state()
     batches = [
-        (jnp.ones((2, 2, 2, 1), dtype=jnp.float32), jnp.zeros((2,), dtype=jnp.int32)),
-        (jnp.ones((1, 2, 2, 1), dtype=jnp.float32), jnp.ones((1,), dtype=jnp.int32)),
+        (
+            jnp.ones((2, 2, 2, 1), dtype=jnp.float32),
+            jnp.zeros((2,), dtype=jnp.int32),
+        ),
+        (
+            jnp.ones((1, 2, 2, 1), dtype=jnp.float32),
+            jnp.ones((1,), dtype=jnp.int32),
+        ),
     ]
     preds, labels = predict_batches(
         state, cast(ResNet, MixedModel()), batches=batches, config=config

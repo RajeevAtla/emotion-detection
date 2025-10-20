@@ -15,7 +15,9 @@ from flax.core import FrozenDict, freeze, unfreeze
 import orbax.checkpoint as ocp
 
 ModuleDef = Type[nn.Module]
-PyTree = Union[jax.Array, jnp.ndarray, Mapping[str, "PyTree"], Sequence["PyTree"]]
+PyTree = Union[
+    jax.Array, jnp.ndarray, Mapping[str, "PyTree"], Sequence["PyTree"]
+]
 BoolTree = Union[bool, Mapping[str, "BoolTree"]]
 
 
@@ -118,7 +120,9 @@ class BasicBlock(ResidualBlock):
             dtype=self.dtype,
             name="conv1",
         )
-        self.bn1 = self.norm(momentum=0.9, epsilon=1e-5, dtype=self.dtype, name="bn1")
+        self.bn1 = self.norm(
+            momentum=0.9, epsilon=1e-5, dtype=self.dtype, name="bn1"
+        )
         self.conv2 = self.conv(
             self.features,
             kernel_size=(3, 3),
@@ -127,7 +131,9 @@ class BasicBlock(ResidualBlock):
             dtype=self.dtype,
             name="conv2",
         )
-        self.bn2 = self.norm(momentum=0.9, epsilon=1e-5, dtype=self.dtype, name="bn2")
+        self.bn2 = self.norm(
+            momentum=0.9, epsilon=1e-5, dtype=self.dtype, name="bn2"
+        )
         if self.use_projection or self.strides != (1, 1):
             self.proj_conv = self.conv(
                 self.features,
@@ -193,7 +199,9 @@ class BottleneckBlock(ResidualBlock):
             dtype=self.dtype,
             name="conv1",
         )
-        self.bn1 = self.norm(momentum=0.9, epsilon=1e-5, dtype=self.dtype, name="bn1")
+        self.bn1 = self.norm(
+            momentum=0.9, epsilon=1e-5, dtype=self.dtype, name="bn1"
+        )
         self.conv2 = self.conv(
             inner_features,
             kernel_size=(3, 3),
@@ -202,7 +210,9 @@ class BottleneckBlock(ResidualBlock):
             dtype=self.dtype,
             name="conv2",
         )
-        self.bn2 = self.norm(momentum=0.9, epsilon=1e-5, dtype=self.dtype, name="bn2")
+        self.bn2 = self.norm(
+            momentum=0.9, epsilon=1e-5, dtype=self.dtype, name="bn2"
+        )
         self.conv3 = self.conv(
             self.features,
             kernel_size=(1, 1),
@@ -211,7 +221,9 @@ class BottleneckBlock(ResidualBlock):
             dtype=self.dtype,
             name="conv3",
         )
-        self.bn3 = self.norm(momentum=0.9, epsilon=1e-5, dtype=self.dtype, name="bn3")
+        self.bn3 = self.norm(
+            momentum=0.9, epsilon=1e-5, dtype=self.dtype, name="bn3"
+        )
         if self.use_projection or self.strides != (1, 1):
             self.proj_conv = self.conv(
                 self.features,
@@ -363,9 +375,13 @@ class ResNet(nn.Module):
         if self.include_top:
             if self.dropout_rate > 0.0:
                 x = nn.Dropout(
-                    rate=self.dropout_rate, deterministic=not train, name="dropout"
+                    rate=self.dropout_rate,
+                    deterministic=not train,
+                    name="dropout",
                 )(x)
-            x = nn.Dense(cfg.num_classes, dtype=self.dtype, name="classifier")(x)
+            x = nn.Dense(cfg.num_classes, dtype=self.dtype, name="classifier")(
+                x
+            )
             features["logits"] = x
 
         if return_features:
@@ -441,7 +457,9 @@ def build_finetune_mask(
     if freeze_classifier is None:
         freeze_classifier = config.freeze_classifier
 
-    has_params_container = isinstance(params, (dict, FrozenDict)) and "params" in params
+    has_params_container = (
+        isinstance(params, (dict, FrozenDict)) and "params" in params
+    )
     param_tree = params["params"] if has_params_container else params
     if isinstance(param_tree, FrozenDict):
         target_tree: Mapping[str, PyTree] = unfreeze(param_tree)
@@ -460,7 +478,10 @@ def build_finetune_mask(
 
         if config.freeze_stem and (
             isinstance(top_level, str)
-            and (top_level.startswith("stem_") or top_level == "input_projection")
+            and (
+                top_level.startswith("stem_")
+                or top_level == "input_projection"
+            )
         ):
             trainable = False
 

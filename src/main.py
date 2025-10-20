@@ -28,7 +28,9 @@ JSONValue = Union[
     Mapping[str, "JSONValue"],
     Sequence["JSONValue"],
 ]
-SummaryMetrics = Mapping[str, Union[float, None, Mapping[str, Sequence[float]]]]
+SummaryMetrics = Mapping[
+    str, Union[float, None, Mapping[str, Sequence[float]]]
+]
 T = TypeVar("T")
 
 
@@ -95,7 +97,9 @@ def load_config(path: Path | None) -> dict[str, JSONValue]:
         try:
             loaded = json.load(fh)
         except json.JSONDecodeError as exc:
-            raise ValueError(f"Failed to parse JSON config at {path}: {exc}") from exc
+            raise ValueError(
+                f"Failed to parse JSON config at {path}: {exc}"
+            ) from exc
     return cast(dict[str, JSONValue], loaded)
 
 
@@ -110,7 +114,9 @@ class RuntimeAugmentationModel(BaseModel):
 
     @field_validator("scale_range")
     @classmethod
-    def validate_scale_range(cls, value: Tuple[float, float]) -> Tuple[float, float]:
+    def validate_scale_range(
+        cls, value: Tuple[float, float]
+    ) -> Tuple[float, float]:
         """Validate that the scale range is positive and ordered.
 
         Args:
@@ -251,7 +257,9 @@ def resolve_configs(args: argparse.Namespace) -> TrainingConfig:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     experiment_suffix = args.experiment_name or config_model.experiment_name
     run_name = (
-        timestamp if experiment_suffix is None else f"{timestamp}-{experiment_suffix}"
+        timestamp
+        if experiment_suffix is None
+        else f"{timestamp}-{experiment_suffix}"
     )
     output_dir = (Path(output_root) / run_name).resolve()
 
@@ -323,9 +331,12 @@ def to_serializable(obj: object) -> JSONValue:
         return to_serializable(data)
     if dataclasses.is_dataclass(obj):
         field_values = {
-            field.name: getattr(obj, field.name) for field in dataclasses.fields(obj)
+            field.name: getattr(obj, field.name)
+            for field in dataclasses.fields(obj)
         }
-        return cast(JSONValue, {k: to_serializable(v) for k, v in field_values.items()})
+        return cast(
+            JSONValue, {k: to_serializable(v) for k, v in field_values.items()}
+        )
     if isinstance(obj, Mapping):
         return cast(JSONValue, {k: to_serializable(v) for k, v in obj.items()})
     if isinstance(obj, Sequence) and not isinstance(obj, (str, bytes)):
@@ -344,7 +355,9 @@ def persist_artifacts(
         metrics: Dictionary of run metrics to write.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    with (output_dir / "config_resolved.json").open("w", encoding="utf-8") as fh:
+    with (output_dir / "config_resolved.json").open(
+        "w", encoding="utf-8"
+    ) as fh:
         json.dump(to_serializable(config), fh, indent=2)
     with (output_dir / "metrics.json").open("w", encoding="utf-8") as fh:
         json.dump(to_serializable(metrics), fh, indent=2)

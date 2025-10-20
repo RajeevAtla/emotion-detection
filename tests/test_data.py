@@ -84,8 +84,12 @@ def test_dataset_statistics_cache(tmp_path: Path, tiny_dataset: Path) -> None:
     """Test that dataset statistics are cached and reused."""
     samples = _scan_split(tiny_dataset, split="train")
     cache_path = tmp_path / "stats.json"
-    stats = compute_dataset_statistics(samples, cache_path=cache_path, force=True)
-    cached = compute_dataset_statistics(samples, cache_path=cache_path, force=False)
+    stats = compute_dataset_statistics(
+        samples, cache_path=cache_path, force=True
+    )
+    cached = compute_dataset_statistics(
+        samples, cache_path=cache_path, force=False
+    )
     assert stats.mean == cached.mean
     assert stats.std == cached.std
 
@@ -123,12 +127,16 @@ def test_augmentation_and_normalization() -> None:
         elastic_blur_sigma=0.2,
     )
     rng = np.random.default_rng(0)
-    base = np.linspace(0, 1, num=48 * 48, dtype=np.float32).reshape((48, 48, 1))
+    base = np.linspace(0, 1, num=48 * 48, dtype=np.float32).reshape(
+        (48, 48, 1)
+    )
     augmented = apply_augmentations(base, rng, config)
     assert augmented.shape == base.shape
 
     normalized = normalize_image(augmented, mean=0.5, std=0.25)
-    assert np.isclose(np.mean(normalized), (np.mean(augmented) - 0.5) / 0.25, atol=1e-3)
+    assert np.isclose(
+        np.mean(normalized), (np.mean(augmented) - 0.5) / 0.25, atol=1e-3
+    )
 
 
 def test_scan_split_handles_unknown_class(tmp_path: Path) -> None:
