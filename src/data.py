@@ -81,7 +81,9 @@ class AugmentationConfig:
             horizontal_flip_prob=float(np.clip(self.horizontal_flip_prob, 0.0, 1.0)),
             rotation_degrees=float(max(0.0, self.rotation_degrees)),
             scale_range=(lo, hi),
-            elastic_blur_sigma=self.elastic_blur_sigma if (self.elastic_blur_sigma or 0.0) > 0 else None,
+            elastic_blur_sigma=self.elastic_blur_sigma
+            if (self.elastic_blur_sigma or 0.0) > 0
+            else None,
             enabled=self.enabled,
         )
 
@@ -124,7 +126,9 @@ class DataModuleConfig:
     mean: Optional[float] = None
     std: Optional[float] = None
     augment: bool = True
-    augmentation: AugmentationConfig = dataclasses.field(default_factory=AugmentationConfig)
+    augmentation: AugmentationConfig = dataclasses.field(
+        default_factory=AugmentationConfig
+    )
     stats_cache_path: Optional[Path] = None
 
     def __post_init__(self) -> None:
@@ -161,7 +165,9 @@ class EmotionDataModule:
             RuntimeError: If setup has not been executed.
         """
         if self._stats is None:
-            raise RuntimeError("EmotionDataModule.setup must be called before accessing stats.")
+            raise RuntimeError(
+                "EmotionDataModule.setup must be called before accessing stats."
+            )
         return self._stats
 
     @property
@@ -175,7 +181,9 @@ class EmotionDataModule:
             RuntimeError: If setup has not been executed.
         """
         if self._class_weights is None:
-            raise RuntimeError("EmotionDataModule.setup must be called before accessing class weights.")
+            raise RuntimeError(
+                "EmotionDataModule.setup must be called before accessing class weights."
+            )
         return self._class_weights
 
     def setup(self, force_recompute_stats: bool = False) -> None:
@@ -188,14 +196,18 @@ class EmotionDataModule:
         train_samples = _scan_split(cfg.data_dir, split="train")
         test_samples = _scan_split(cfg.data_dir, split="test")
 
-        train_indices, val_indices = stratified_split(train_samples, cfg.val_ratio, cfg.seed)
+        train_indices, val_indices = stratified_split(
+            train_samples, cfg.val_ratio, cfg.seed
+        )
         self._train_samples = [train_samples[i] for i in train_indices]
         self._val_samples = [train_samples[i] for i in val_indices]
         self._test_samples = test_samples
 
         stats_cache = cfg.stats_cache_path or cfg.data_dir / DEFAULT_STATS_FILENAME
         if cfg.mean is not None and cfg.std is not None and not force_recompute_stats:
-            derived_stats = DatasetStats(mean=float(cfg.mean), std=float(cfg.std), num_pixels=0)
+            derived_stats = DatasetStats(
+                mean=float(cfg.mean), std=float(cfg.std), num_pixels=0
+            )
         else:
             derived_stats = compute_dataset_statistics(
                 self._train_samples,
@@ -206,7 +218,9 @@ class EmotionDataModule:
             cfg.std = derived_stats.std
 
         self._stats = derived_stats
-        self._class_weights = compute_class_weights(self._train_samples, len(CLASS_NAMES))
+        self._class_weights = compute_class_weights(
+            self._train_samples, len(CLASS_NAMES)
+        )
 
     def train_batches(
         self,
@@ -315,7 +329,9 @@ class EmotionDataModule:
         batch_size = batch_size or self.config.batch_size
         drop_last = drop_last if drop_last is not None else self.config.drop_last
 
-        rng = np.random.default_rng(rng_seed if rng_seed is not None else self.config.seed)
+        rng = np.random.default_rng(
+            rng_seed if rng_seed is not None else self.config.seed
+        )
         indices = np.arange(len(samples))
         if shuffle:
             rng.shuffle(indices)
@@ -536,7 +552,10 @@ def apply_augmentations(
     if aug_cfg.scale_range is not None:
         augmented = _random_resized_crop(augmented, rng, aug_cfg.scale_range)
 
-    if aug_cfg.horizontal_flip_prob > 0.0 and rng.random() < aug_cfg.horizontal_flip_prob:
+    if (
+        aug_cfg.horizontal_flip_prob > 0.0
+        and rng.random() < aug_cfg.horizontal_flip_prob
+    ):
         augmented = augmented[:, ::-1, :]
 
     if aug_cfg.rotation_degrees > 0.0:
@@ -555,7 +574,9 @@ def apply_augmentations(
     return np.clip(augmented, 0.0, 1.0)
 
 
-def normalize_image(image: np.ndarray, mean: Optional[float], std: Optional[float]) -> np.ndarray:
+def normalize_image(
+    image: np.ndarray, mean: Optional[float], std: Optional[float]
+) -> np.ndarray:
     """Normalize image tensor by mean and standard deviation.
 
     Args:
@@ -637,7 +658,9 @@ def _random_resized_crop(
         crop = padded[top : top + target_side, left : left + target_side]
 
     if crop.shape[0] != h or crop.shape[1] != w:
-        pil_img = Image.fromarray((np.clip(crop, 0.0, 1.0) * 255).astype(np.uint8).squeeze(axis=-1))
+        pil_img = Image.fromarray(
+            (np.clip(crop, 0.0, 1.0) * 255).astype(np.uint8).squeeze(axis=-1)
+        )
         pil_img = pil_img.resize((w, h), resample=RESAMPLE_BILINEAR)
         crop = np.asarray(pil_img, dtype=np.float32)[..., None] / 255.0
     return crop

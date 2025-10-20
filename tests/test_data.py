@@ -158,13 +158,17 @@ def test_stats_and_class_weights_require_setup(tmp_path: Path) -> None:
         _ = module.class_weights
 
 
-def test_setup_skips_stat_recompute_when_provided(monkeypatch, tiny_dataset: Path) -> None:
+def test_setup_skips_stat_recompute_when_provided(
+    monkeypatch, tiny_dataset: Path
+) -> None:
     """Test that provided statistics skip recomputation."""
     config = DataModuleConfig(data_dir=tiny_dataset, mean=0.25, std=0.5)
     module = EmotionDataModule(config)
 
     def boom(*args, **kwargs):
-        raise AssertionError("compute_dataset_statistics should not be called when mean/std provided")
+        raise AssertionError(
+            "compute_dataset_statistics should not be called when mean/std provided"
+        )
 
     monkeypatch.setattr("src.data.compute_dataset_statistics", boom)
     module.setup()

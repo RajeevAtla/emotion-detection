@@ -20,7 +20,12 @@ from flax.training.dynamic_scale import DynamicScale
 from tensorboardX import SummaryWriter
 
 from src.data import DataModuleConfig, EmotionDataModule
-from src.model import ResNet, build_finetune_mask, create_resnet, maybe_load_pretrained_params
+from src.model import (
+    ResNet,
+    build_finetune_mask,
+    create_resnet,
+    maybe_load_pretrained_params,
+)
 
 
 @dataclass
@@ -96,7 +101,9 @@ class TrainState(train_state.TrainState):
     dynamic_scale: Optional[DynamicScale] = None
 
 
-def create_learning_rate_schedule(config: TrainingConfig, steps_per_epoch: int) -> optax.Schedule:
+def create_learning_rate_schedule(
+    config: TrainingConfig, steps_per_epoch: int
+) -> optax.Schedule:
     """Build a learning rate schedule with warmup followed by cosine decay.
 
     Args:
@@ -130,7 +137,11 @@ def create_learning_rate_schedule(config: TrainingConfig, steps_per_epoch: int) 
     return schedule
 
 
-def create_optimizer(config: TrainingConfig, lr_schedule: optax.Schedule, mask: Optional[FrozenDict] = None) -> optax.GradientTransformation:
+def create_optimizer(
+    config: TrainingConfig,
+    lr_schedule: optax.Schedule,
+    mask: Optional[FrozenDict] = None,
+) -> optax.GradientTransformation:
     """Create the optimizer transformation for training.
 
     Args:
@@ -241,7 +252,9 @@ def cross_entropy_loss(
     return jnp.mean(loss)
 
 
-def compute_confusion_matrix(preds: jnp.ndarray, labels: jnp.ndarray, num_classes: int) -> np.ndarray:
+def compute_confusion_matrix(
+    preds: jnp.ndarray, labels: jnp.ndarray, num_classes: int
+) -> np.ndarray:
     """Return confusion matrix with shape ``(num_classes, num_classes)``.
 
     Args:
@@ -322,7 +335,9 @@ def build_train_step(
         }
         return loss, (metrics, new_model_state)
 
-    def train_step(state: TrainState, batch: Tuple[jnp.ndarray, jnp.ndarray], rng: jax.Array) -> Tuple[TrainState, Dict[str, jnp.ndarray]]:
+    def train_step(
+        state: TrainState, batch: Tuple[jnp.ndarray, jnp.ndarray], rng: jax.Array
+    ) -> Tuple[TrainState, Dict[str, jnp.ndarray]]:
         """Execute one optimizer update using the provided batch."""
         images, labels = batch
         if config.use_mixed_precision:
@@ -334,7 +349,9 @@ def build_train_step(
             dynamic_scale = cast(Any, state.dynamic_scale)
 
             def scaled_loss_fn(params):
-                loss, (metrics, new_model_state) = loss_fn(params, state.batch_stats, images, labels, rng)
+                loss, (metrics, new_model_state) = loss_fn(
+                    params, state.batch_stats, images, labels, rng
+                )
                 return dynamic_scale.scale(loss), (metrics, new_model_state)  # type: ignore[call-arg]
 
             grad_fn = dynamic_scale.value_and_grad(scaled_loss_fn, has_aux=True)
@@ -375,7 +392,10 @@ def build_eval_step(model: ResNet, config: TrainingConfig):
     Returns:
         Callable: Function computing evaluation metrics for a batch.
     """
-    def eval_step(state: TrainState, batch: Tuple[jnp.ndarray, jnp.ndarray]) -> Tuple[Dict[str, jnp.ndarray], jnp.ndarray]:
+
+    def eval_step(
+        state: TrainState, batch: Tuple[jnp.ndarray, jnp.ndarray]
+    ) -> Tuple[Dict[str, jnp.ndarray], jnp.ndarray]:
         """Evaluate a batch and return metrics and predictions."""
         images, labels = batch
         if config.use_mixed_precision:
@@ -383,7 +403,9 @@ def build_eval_step(model: ResNet, config: TrainingConfig):
         else:
             images = images.astype(jnp.float32)
         variables = {"params": state.params, "batch_stats": state.batch_stats}
-        logits = cast(jnp.ndarray, model.apply(variables, images, train=False, mutable=False))
+        logits = cast(
+            jnp.ndarray, model.apply(variables, images, train=False, mutable=False)
+        )
         loss = cross_entropy_loss(
             logits,
             labels,
@@ -430,7 +452,9 @@ def save_checkpoint(state: TrainState, config: TrainingConfig, epoch: int) -> No
             shutil.rmtree(path, ignore_errors=True)
 
 
-def maybe_restore_checkpoint(config: TrainingConfig, state: TrainState) -> Optional[Dict[str, Any]]:
+def maybe_restore_checkpoint(
+    config: TrainingConfig, state: TrainState
+) -> Optional[Dict[str, Any]]:
     """Restore a checkpoint if ``resume_checkpoint`` is specified.
 
     Args:
@@ -450,7 +474,9 @@ def maybe_restore_checkpoint(config: TrainingConfig, state: TrainState) -> Optio
         "dynamic_scale": state.dynamic_scale,
     }
     restore_args = ocp.args.PyTreeRestore(item=template)
-    return checkpointer.restore(str(config.resume_checkpoint), item=template, restore_args=restore_args)
+    return checkpointer.restore(
+        str(config.resume_checkpoint), item=template, restore_args=restore_args
+    )
 
 
 def predict_batches(
@@ -478,7 +504,9 @@ def predict_batches(
         else:
             images = images.astype(jnp.float32)
         variables = {"params": state.params, "batch_stats": state.batch_stats}
-        logits = cast(jnp.ndarray, model.apply(variables, images, train=False, mutable=False))
+        logits = cast(
+            jnp.ndarray, model.apply(variables, images, train=False, mutable=False)
+        )
         preds.append(jnp.argmax(logits, axis=-1))
         labels_list.append(labels)
     if not preds:
@@ -530,7 +558,12 @@ def train_and_evaluate(config: TrainingConfig) -> Dict[str, Any]:
 
     writer = SummaryWriter(log_dir=str(config.output_dir / "tensorboard"))
     best_val_loss = jnp.inf
-    history: Dict[str, list[float]] = {"train_loss": [], "train_accuracy": [], "val_loss": [], "val_accuracy": []}
+    history: Dict[str, list[float]] = {
+        "train_loss": [],
+        "train_accuracy": [],
+        "val_loss": [],
+        "val_accuracy": [],
+    }
 
     epochs_without_improvement = 0
     for epoch in range(1, config.num_epochs + 1):
@@ -553,13 +586,20 @@ def train_and_evaluate(config: TrainingConfig) -> Dict[str, Any]:
                 global_step = (epoch - 1) * steps_per_epoch + step
                 writer.add_scalars(
                     "train_step",
-                    {"loss": float(metrics["loss"]), "accuracy": float(metrics["accuracy"])},
+                    {
+                        "loss": float(metrics["loss"]),
+                        "accuracy": float(metrics["accuracy"]),
+                    },
                     global_step=global_step,
                 )
 
         if train_metrics:
-            epoch_train_loss = float(jnp.mean(jnp.asarray([m["loss"] for m in train_metrics])))
-            epoch_train_acc = float(jnp.mean(jnp.asarray([m["accuracy"] for m in train_metrics])))
+            epoch_train_loss = float(
+                jnp.mean(jnp.asarray([m["loss"] for m in train_metrics]))
+            )
+            epoch_train_acc = float(
+                jnp.mean(jnp.asarray([m["accuracy"] for m in train_metrics]))
+            )
         else:
             epoch_train_loss = float("nan")
             epoch_train_acc = float("nan")
@@ -573,8 +613,12 @@ def train_and_evaluate(config: TrainingConfig) -> Dict[str, Any]:
             val_preds_list.append(preds)
             val_labels_list.append(labels)
         if val_metrics:
-            epoch_val_loss = float(jnp.mean(jnp.asarray([m["loss"] for m in val_metrics])))
-            epoch_val_acc = float(jnp.mean(jnp.asarray([m["accuracy"] for m in val_metrics])))
+            epoch_val_loss = float(
+                jnp.mean(jnp.asarray([m["loss"] for m in val_metrics]))
+            )
+            epoch_val_acc = float(
+                jnp.mean(jnp.asarray([m["accuracy"] for m in val_metrics]))
+            )
         else:
             epoch_val_loss = float("nan")
             epoch_val_acc = float("nan")
@@ -620,7 +664,10 @@ def train_and_evaluate(config: TrainingConfig) -> Dict[str, Any]:
         if epoch % config.checkpoint_every == 0 or improved:
             save_checkpoint(state, config, epoch)
 
-        if config.patience is not None and epochs_without_improvement >= config.patience:
+        if (
+            config.patience is not None
+            and epochs_without_improvement >= config.patience
+        ):
             break
 
     test_predictions, test_labels = predict_batches(

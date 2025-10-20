@@ -26,7 +26,9 @@ def parse_args() -> argparse.Namespace:
     Returns:
         argparse.Namespace: Parsed CLI options.
     """
-    parser = argparse.ArgumentParser(description="Emotion detection training entrypoint.")
+    parser = argparse.ArgumentParser(
+        description="Emotion detection training entrypoint."
+    )
     parser.add_argument(
         "--config",
         type=Path,
@@ -238,10 +240,16 @@ def resolve_configs(args: argparse.Namespace) -> TrainingConfig:
     output_root = args.output_dir or config_model.output_dir or Path("runs")
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     experiment_suffix = args.experiment_name or config_model.experiment_name
-    run_name = timestamp if experiment_suffix is None else f"{timestamp}-{experiment_suffix}"
+    run_name = (
+        timestamp if experiment_suffix is None else f"{timestamp}-{experiment_suffix}"
+    )
     output_dir = (Path(output_root) / run_name).resolve()
 
-    training_seed = args.seed if args.seed is not None else config_model.seed or config_model.data.seed
+    training_seed = (
+        args.seed
+        if args.seed is not None
+        else config_model.seed or config_model.data.seed
+    )
 
     data_dict = config_model.data.model_dump()
     data_dict["seed"] = training_seed
@@ -321,7 +329,9 @@ def to_serializable(obj: Any) -> Any:
     return obj
 
 
-def persist_artifacts(output_dir: Path, config: TrainingConfig, metrics: Dict[str, Any]) -> None:
+def persist_artifacts(
+    output_dir: Path, config: TrainingConfig, metrics: Dict[str, Any]
+) -> None:
     """Write resolved configuration and metrics to disk.
 
     Args:

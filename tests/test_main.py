@@ -113,7 +113,9 @@ def test_to_serializable_handles_complex_types(tmp_path: Path) -> None:
         data=DataModuleConfig(data_dir=tmp_path),
         output_dir=tmp_path,
     )
-    serialized = main.to_serializable({"path": tmp_path, "config": config, "array": np.array([1, 2, 3])})
+    serialized = main.to_serializable(
+        {"path": tmp_path, "config": config, "array": np.array([1, 2, 3])}
+    )
     assert serialized["path"] == str(tmp_path)
     assert serialized["array"] == [1, 2, 3]
 
@@ -124,7 +126,12 @@ def test_persist_artifacts_and_summarize(tmp_path: Path) -> None:
         data=DataModuleConfig(data_dir=tmp_path, batch_size=2),
         output_dir=tmp_path / "artifacts",
     )
-    metrics: Dict[str, Any] = {"train_loss": 0.1, "train_accuracy": 0.9, "val_loss": 0.2, "val_accuracy": 0.8}
+    metrics: Dict[str, Any] = {
+        "train_loss": 0.1,
+        "train_accuracy": 0.9,
+        "val_loss": 0.2,
+        "val_accuracy": 0.8,
+    }
     main.persist_artifacts(config.output_dir, config, metrics)
     summary = main.summarize(metrics)
     assert "Final train loss" in summary
@@ -132,7 +139,9 @@ def test_persist_artifacts_and_summarize(tmp_path: Path) -> None:
     assert (config.output_dir / "metrics.json").exists()
 
 
-def test_resolve_configs_and_main_entry(monkeypatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_resolve_configs_and_main_entry(
+    monkeypatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Test CLI resolution and main execution with monkeypatched dependencies."""
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
@@ -159,9 +168,24 @@ def test_resolve_configs_and_main_entry(monkeypatch, tmp_path: Path, capsys: pyt
 
     def fake_train_and_evaluate(cfg: TrainingConfig) -> Dict[str, Any]:
         assert cfg.seed == 99
-        return {"train_loss": 0.1, "train_accuracy": 1.0, "val_loss": 0.2, "val_accuracy": 0.9}
+        return {
+            "train_loss": 0.1,
+            "train_accuracy": 1.0,
+            "val_loss": 0.2,
+            "val_accuracy": 0.9,
+        }
 
-    argv = ["prog", "--config", str(config_path), "--output-dir", str(output_dir), "--seed", "99", "--experiment-name", "unit"]
+    argv = [
+        "prog",
+        "--config",
+        str(config_path),
+        "--output-dir",
+        str(output_dir),
+        "--seed",
+        "99",
+        "--experiment-name",
+        "unit",
+    ]
     monkeypatch.setattr(main.argparse, "_sys", SimpleNamespace(argv=argv))
     monkeypatch.setattr(main, "train_and_evaluate", fake_train_and_evaluate)
 
@@ -238,7 +262,9 @@ def test_summarize_includes_test_accuracy() -> None:
     assert "Test accuracy" in summary
 
 
-def test_main_entrypoint_executes(monkeypatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_entrypoint_executes(
+    monkeypatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Test that the CLI entrypoint executes end-to-end with faked training."""
     config_path = tmp_path / "cfg.json"
     config_path.write_text(json.dumps({"data": {"data_dir": str(tmp_path)}}))
@@ -253,7 +279,10 @@ def test_main_entrypoint_executes(monkeypatch, tmp_path: Path, capsys: pytest.Ca
     write_sample("train", "angry", 64)
     write_sample("test", "angry", 128)
 
-    monkeypatch.setattr("sys.argv", ["prog", "--config", str(config_path), "--output-dir", str(output_dir)])
+    monkeypatch.setattr(
+        "sys.argv",
+        ["prog", "--config", str(config_path), "--output-dir", str(output_dir)],
+    )
 
     import src.train as train_module
 
@@ -261,7 +290,12 @@ def test_main_entrypoint_executes(monkeypatch, tmp_path: Path, capsys: pytest.Ca
 
     def fake_train_and_evaluate(cfg: TrainingConfig) -> Dict[str, Any]:
         calls["config"] = cfg
-        return {"train_loss": 0.0, "train_accuracy": 1.0, "val_loss": 0.0, "val_accuracy": 1.0}
+        return {
+            "train_loss": 0.0,
+            "train_accuracy": 1.0,
+            "val_loss": 0.0,
+            "val_accuracy": 1.0,
+        }
 
     monkeypatch.setattr(train_module, "train_and_evaluate", fake_train_and_evaluate)
     monkeypatch.setattr(main, "train_and_evaluate", fake_train_and_evaluate)

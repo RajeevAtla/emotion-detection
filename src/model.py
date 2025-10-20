@@ -69,12 +69,16 @@ def resnet_config(depth: int, **overrides: object) -> ResNetConfig:
         50: ((3, 4, 6, 3), "bottleneck"),
     }
     if depth not in presets:
-        raise ValueError(f"Unsupported ResNet depth {depth}; choose from {sorted(presets)}.")
+        raise ValueError(
+            f"Unsupported ResNet depth {depth}; choose from {sorted(presets)}."
+        )
 
     blocks_per_stage, block_key = presets[depth]
     block_cls = BasicBlock if block_key == "basic" else BottleneckBlock
 
-    config = ResNetConfig(depth=depth, blocks_per_stage=blocks_per_stage, block=block_cls)
+    config = ResNetConfig(
+        depth=depth, blocks_per_stage=blocks_per_stage, block=block_cls
+    )
     return replace(config, **overrides)  # type: ignore[arg-type]
 
 
@@ -129,7 +133,9 @@ class BasicBlock(ResidualBlock):
                 dtype=self.dtype,
                 name="proj_conv",
             )
-            self.proj_bn = self.norm(momentum=0.9, epsilon=1e-5, dtype=self.dtype, name="proj_bn")
+            self.proj_bn = self.norm(
+                momentum=0.9, epsilon=1e-5, dtype=self.dtype, name="proj_bn"
+            )
         else:
             self.proj_conv = None
             self.proj_bn = None
@@ -211,7 +217,9 @@ class BottleneckBlock(ResidualBlock):
                 dtype=self.dtype,
                 name="proj_conv",
             )
-            self.proj_bn = self.norm(momentum=0.9, epsilon=1e-5, dtype=self.dtype, name="proj_bn")
+            self.proj_bn = self.norm(
+                momentum=0.9, epsilon=1e-5, dtype=self.dtype, name="proj_bn"
+            )
         else:
             self.proj_conv = None
             self.proj_bn = None
@@ -339,18 +347,20 @@ class ResNet(nn.Module):
                     norm=self.norm,
                     conv=self.conv,
                     use_projection=use_projection,
-                    name=f"stage{stage_index+1}_block{block_index+1}",
+                    name=f"stage{stage_index + 1}_block{block_index + 1}",
                 )
                 x = block(x, train=train)
 
-            features[f"stage{stage_index+1}"] = x
+            features[f"stage{stage_index + 1}"] = x
 
         x = jnp.mean(x, axis=(1, 2))
         features["pooled"] = x
 
         if self.include_top:
             if self.dropout_rate > 0.0:
-                x = nn.Dropout(rate=self.dropout_rate, deterministic=not train, name="dropout")(x)
+                x = nn.Dropout(
+                    rate=self.dropout_rate, deterministic=not train, name="dropout"
+                )(x)
             x = nn.Dense(cfg.num_classes, dtype=self.dtype, name="classifier")(x)
             features["logits"] = x
 
@@ -452,14 +462,21 @@ def build_finetune_mask(
         trainable = True
 
         if config.freeze_stem and (
-            isinstance(top_level, str) and (top_level.startswith("stem_") or top_level == "input_projection")
+            isinstance(top_level, str)
+            and (top_level.startswith("stem_") or top_level == "input_projection")
         ):
             trainable = False
 
-        if isinstance(top_level, str) and any(top_level.startswith(prefix) for prefix in frozen_stages):
+        if isinstance(top_level, str) and any(
+            top_level.startswith(prefix) for prefix in frozen_stages
+        ):
             trainable = False
 
-        if freeze_classifier and isinstance(top_level, str) and top_level.startswith("classifier"):
+        if (
+            freeze_classifier
+            and isinstance(top_level, str)
+            and top_level.startswith("classifier")
+        ):
             trainable = False
 
         mask_flat[path] = trainable
@@ -491,7 +508,9 @@ def maybe_load_pretrained_params(
     checkpointer = ocp.PyTreeCheckpointer()
     target = unfreeze(params) if isinstance(params, FrozenDict) else params
     restore_args = ocp.args.PyTreeRestore(item=target)
-    restored = checkpointer.restore(str(config.checkpoint_path), item=target, restore_args=restore_args)
+    restored = checkpointer.restore(
+        str(config.checkpoint_path), item=target, restore_args=restore_args
+    )
     if isinstance(restored, FrozenDict):
         return restored  # pragma: no cover
     return freeze(restored)  # pragma: no cover

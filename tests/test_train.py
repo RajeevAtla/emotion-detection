@@ -13,16 +13,6 @@ import jax
 import jax.numpy as jnp
 import optax
 import pytest
-warnings.filterwarnings(
-    "ignore",
-    message="Sharding info not provided when restoring",
-    category=UserWarning,
-)
-
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:Sharding info not provided when restoring:UserWarning"
-)
-
 from flax.core import freeze
 from flax.training.dynamic_scale import DynamicScale
 
@@ -44,6 +34,17 @@ from src.train import (
     predict_batches,
     save_checkpoint,
     train_and_evaluate,
+)
+
+
+warnings.filterwarnings(
+    "ignore",
+    message="Sharding info not provided when restoring",
+    category=UserWarning,
+)
+
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:Sharding info not provided when restoring:UserWarning"
 )
 
 
@@ -71,9 +72,11 @@ def test_create_optimizer_with_mask_and_accum() -> None:
         output_dir=Path("out"),
         gradient_accumulation_steps=2,
     )
+
     def schedule(_: int) -> float:
         """Return a constant learning rate for optimizer tests."""
         return 0.1
+
     params = freeze({"w": jnp.array(1.0)})
     mask = freeze({"w": True})
     tx = create_optimizer(config, schedule, mask)
@@ -91,7 +94,9 @@ def test_create_train_state_with_pretrained(monkeypatch, tmp_path: Path) -> None
         frozen_stages=(1,),
         pretrained_checkpoint=tmp_path / "ckpt",
     )
-    monkeypatch.setattr(train, "maybe_load_pretrained_params", lambda params, config: params)
+    monkeypatch.setattr(
+        train, "maybe_load_pretrained_params", lambda params, config: params
+    )
     monkeypatch.setattr(
         train,
         "create_optimizer",
@@ -116,9 +121,18 @@ def test_create_train_state_without_freeze(tmp_path: Path) -> None:
     assert isinstance(state, TrainState)
 
 
-def _dummy_apply_fn(variables: Dict[str, Any], images: jnp.ndarray, *, train: bool, mutable=None, rngs=None):
+def _dummy_apply_fn(
+    variables: Dict[str, Any],
+    images: jnp.ndarray,
+    *,
+    train: bool,
+    mutable=None,
+    rngs=None,
+):
     """Produce deterministic logits for dummy training utilities."""
-    logits = jnp.stack([jnp.sum(images, axis=(1, 2, 3)), jnp.zeros(images.shape[0])], axis=-1)
+    logits = jnp.stack(
+        [jnp.sum(images, axis=(1, 2, 3)), jnp.zeros(images.shape[0])], axis=-1
+    )
     batch_stats = variables.get("batch_stats", freeze({}))
     if mutable:
         return logits, {"batch_stats": batch_stats}
@@ -129,7 +143,9 @@ def _make_train_state(dynamic: bool = False) -> TrainState:
     """Construct a lightweight train state for unit tests."""
     params = {"w": jnp.array(1.0)}
     tx = optax.sgd(learning_rate=0.1)
-    state = TrainState.create(apply_fn=_dummy_apply_fn, params=params, tx=tx, batch_stats=freeze({}))
+    state = TrainState.create(
+        apply_fn=_dummy_apply_fn, params=params, tx=tx, batch_stats=freeze({})
+    )
     if dynamic:
         state = state.replace(dynamic_scale=DynamicScale())
     return state
@@ -137,12 +153,22 @@ def _make_train_state(dynamic: bool = False) -> TrainState:
 
 class DummyModel:
     """Lightweight ResNet stand-in for train/eval step tests."""
+
     config = train.create_resnet(depth=18, num_classes=2).config
 
     @staticmethod
-    def apply(variables: Dict[str, Any], images: jnp.ndarray, *, train: bool, mutable=None, rngs=None):
+    def apply(
+        variables: Dict[str, Any],
+        images: jnp.ndarray,
+        *,
+        train: bool,
+        mutable=None,
+        rngs=None,
+    ):
         """Apply the dummy model by delegating to the helper apply function."""
-        return _dummy_apply_fn(variables, images, train=train, mutable=mutable, rngs=rngs)
+        return _dummy_apply_fn(
+            variables, images, train=train, mutable=mutable, rngs=rngs
+        )
 
 
 def test_cross_entropy_loss_with_smoothing_and_weights() -> None:
@@ -150,13 +176,17 @@ def test_cross_entropy_loss_with_smoothing_and_weights() -> None:
     logits = jnp.array([[2.0, 0.5]])
     labels = jnp.array([0])
     weights = jnp.array([0.7, 0.3])
-    loss = cross_entropy_loss(logits, labels, label_smoothing=0.1, class_weights=weights)
+    loss = cross_entropy_loss(
+        logits, labels, label_smoothing=0.1, class_weights=weights
+    )
     assert float(loss) > 0
 
 
 def test_build_train_step_standard() -> None:
     """Test the standard training step with deterministic gradients."""
-    config = TrainingConfig(data=DataModuleConfig(data_dir=Path(".")), output_dir=Path("out"))
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=Path(".")), output_dir=Path("out")
+    )
     model = cast(ResNet, DummyModel())
     train_step = build_train_step(model, config, class_weights=jnp.ones(2))
     state = _make_train_state()
@@ -176,6 +206,7 @@ def test_build_train_step_mixed_precision() -> None:
     )
     model = cast(ResNet, DummyModel())
     train_step = build_train_step(model, config, class_weights=None)
+
     class DummyDynamicScale:
         loss_scale = jnp.array(1.0)
 
@@ -203,10 +234,14 @@ def test_build_train_step_mixed_precision() -> None:
 
 def test_build_eval_step_returns_predictions() -> None:
     """Test evaluation step outputs accuracy metrics and predictions."""
-    config = TrainingConfig(data=DataModuleConfig(data_dir=Path(".")), output_dir=Path("out"))
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=Path(".")), output_dir=Path("out")
+    )
     eval_step = build_eval_step(cast(ResNet, DummyModel()), config)
     state = _make_train_state()
-    metrics, preds = eval_step(state, (jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32)))
+    metrics, preds = eval_step(
+        state, (jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32))
+    )
     assert "accuracy" in metrics
     assert preds.shape == (1,)
 
@@ -223,14 +258,18 @@ def test_confusion_matrix_helpers() -> None:
 
 def test_checkpoint_save_and_restore(tmp_path: Path) -> None:
     """Test checkpoint rotation and restoration behavior."""
-    config = TrainingConfig(data=DataModuleConfig(data_dir=tmp_path), output_dir=tmp_path, max_checkpoints=2)
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=tmp_path), output_dir=tmp_path, max_checkpoints=2
+    )
     state = _make_train_state()
     save_checkpoint(state, config, epoch=1)
     save_checkpoint(state, config, epoch=2)
     save_checkpoint(state, config, epoch=3)
     assert not (config.output_dir / "checkpoints" / "epoch_0001").exists()
     restored = maybe_restore_checkpoint(
-        replace(config, resume_checkpoint=config.output_dir / "checkpoints" / "epoch_0003"),
+        replace(
+            config, resume_checkpoint=config.output_dir / "checkpoints" / "epoch_0003"
+        ),
         state,
     )
     assert restored is not None
@@ -238,21 +277,28 @@ def test_checkpoint_save_and_restore(tmp_path: Path) -> None:
 
 def test_predict_batches_handles_empty_and_non_empty() -> None:
     """Test prediction helper behavior with empty and populated inputs."""
-    config = TrainingConfig(data=DataModuleConfig(data_dir=Path(".")), output_dir=Path("out"))
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=Path(".")), output_dir=Path("out")
+    )
     state = _make_train_state()
-    preds, labels = predict_batches(state, cast(ResNet, DummyModel()), batches=[], config=config)
+    preds, labels = predict_batches(
+        state, cast(ResNet, DummyModel()), batches=[], config=config
+    )
     assert preds.size == 0
 
     batches = [
         (jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32)),
         (jnp.ones((1, 2, 2, 1)) * 2, jnp.ones((1,), dtype=jnp.int32)),
     ]
-    preds, labels = predict_batches(state, cast(ResNet, DummyModel()), batches=batches, config=config)
+    preds, labels = predict_batches(
+        state, cast(ResNet, DummyModel()), batches=batches, config=config
+    )
     assert preds.shape == labels.shape
 
 
 def test_train_and_evaluate_with_stubs(monkeypatch, tmp_path: Path) -> None:
     """Test train-and-evaluate loop using stubbed collaborators."""
+
     class StubDataModule:
         """Stub implementation of the data module contract."""
 
@@ -271,9 +317,11 @@ def test_train_and_evaluate_with_stubs(monkeypatch, tmp_path: Path) -> None:
 
         def train_batches(self, **kwargs):
             """Yield two small synthetic batches for training."""
+
             def generator():
                 yield jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32)
                 yield jnp.ones((1, 2, 2, 1)) * 2, jnp.ones((1,), dtype=jnp.int32)
+
             return generator()
 
         def val_batches(self, **kwargs):
@@ -327,7 +375,9 @@ def test_train_and_evaluate_with_stubs(monkeypatch, tmp_path: Path) -> None:
 
     def stub_eval_step(state, batch):
         """Return deterministic validation metrics and zero predictions."""
-        return {"loss": val_losses.pop(0), "accuracy": jnp.array(0.9)}, jnp.zeros(batch[0].shape[0], dtype=jnp.int32)
+        return {"loss": val_losses.pop(0), "accuracy": jnp.array(0.9)}, jnp.zeros(
+            batch[0].shape[0], dtype=jnp.int32
+        )
 
     def stub_predict_batches(state, model_obj, batches, config_obj):
         """Return zero-valued predictions and labels."""
@@ -335,6 +385,7 @@ def test_train_and_evaluate_with_stubs(monkeypatch, tmp_path: Path) -> None:
 
     monkeypatch.setattr(train, "EmotionDataModule", StubDataModule)
     monkeypatch.setattr(train, "SummaryWriter", StubWriter)
+
     class FakeResNet:
         """Stub ResNet carrying the required config interface."""
 
@@ -346,8 +397,12 @@ def test_train_and_evaluate_with_stubs(monkeypatch, tmp_path: Path) -> None:
 
     monkeypatch.setattr(train, "create_resnet", lambda **kwargs: FakeResNet())
     monkeypatch.setattr(train, "create_train_state", stub_create_state)
-    monkeypatch.setattr(train, "build_train_step", lambda *args, **kwargs: stub_train_step)
-    monkeypatch.setattr(train, "build_eval_step", lambda *args, **kwargs: stub_eval_step)
+    monkeypatch.setattr(
+        train, "build_train_step", lambda *args, **kwargs: stub_train_step
+    )
+    monkeypatch.setattr(
+        train, "build_eval_step", lambda *args, **kwargs: stub_eval_step
+    )
     monkeypatch.setattr(train, "save_checkpoint", lambda *args, **kwargs: None)
     monkeypatch.setattr(train, "predict_batches", stub_predict_batches)
 
@@ -374,7 +429,14 @@ def test_build_eval_step_mixed_precision_casts() -> None:
         config = train.create_resnet(depth=18, num_classes=2).config
 
         @staticmethod
-        def apply(variables: Dict[str, Any], images: jnp.ndarray, *, train: bool, mutable=None, rngs=None):
+        def apply(
+            variables: Dict[str, Any],
+            images: jnp.ndarray,
+            *,
+            train: bool,
+            mutable=None,
+            rngs=None,
+        ):
             """Record the dtype of incoming images and emit zero logits."""
             record["dtype"] = images.dtype
             logits = jnp.zeros((images.shape[0], 2), dtype=jnp.float32)
@@ -387,7 +449,10 @@ def test_build_eval_step_mixed_precision_casts() -> None:
     )
     eval_step = build_eval_step(cast(ResNet, MixedModel()), config)
     state = _make_train_state()
-    eval_step(state, (jnp.ones((1, 2, 2, 1), dtype=jnp.float32), jnp.zeros((1,), dtype=jnp.int32)))
+    eval_step(
+        state,
+        (jnp.ones((1, 2, 2, 1), dtype=jnp.float32), jnp.zeros((1,), dtype=jnp.int32)),
+    )
     assert record["dtype"] == jnp.float16
 
 
@@ -401,7 +466,14 @@ def test_predict_batches_mixed_precision_casts() -> None:
         config = train.create_resnet(depth=18, num_classes=2).config
 
         @staticmethod
-        def apply(variables: Dict[str, Any], images: jnp.ndarray, *, train: bool, mutable=None, rngs=None):
+        def apply(
+            variables: Dict[str, Any],
+            images: jnp.ndarray,
+            *,
+            train: bool,
+            mutable=None,
+            rngs=None,
+        ):
             """Append the incoming dtype for verification and return logits."""
             dtypes.append(images.dtype)
             return jnp.zeros((images.shape[0], 2), dtype=jnp.float32)
@@ -416,13 +488,18 @@ def test_predict_batches_mixed_precision_casts() -> None:
         (jnp.ones((2, 2, 2, 1), dtype=jnp.float32), jnp.zeros((2,), dtype=jnp.int32)),
         (jnp.ones((1, 2, 2, 1), dtype=jnp.float32), jnp.ones((1,), dtype=jnp.int32)),
     ]
-    preds, labels = predict_batches(state, cast(ResNet, MixedModel()), batches=batches, config=config)
+    preds, labels = predict_batches(
+        state, cast(ResNet, MixedModel()), batches=batches, config=config
+    )
     assert preds.shape == labels.shape
     assert all(dtype == jnp.float16 for dtype in dtypes)
 
 
-def test_train_and_evaluate_handles_restore_and_empty_metrics(monkeypatch, tmp_path: Path) -> None:
+def test_train_and_evaluate_handles_restore_and_empty_metrics(
+    monkeypatch, tmp_path: Path
+) -> None:
     """Test resume flow and metric defaults when no batches are produced."""
+
     class EmptyDataModule:
         """Stub data module that produces no batches."""
 
@@ -494,10 +571,28 @@ def test_train_and_evaluate_handles_restore_and_empty_metrics(monkeypatch, tmp_p
         },
     )
     monkeypatch.setattr(train, "create_resnet", lambda **kwargs: FakeResNet())
-    monkeypatch.setattr(train, "build_train_step", lambda *args, **kwargs: lambda state, batch, rng: (state, {}))
-    monkeypatch.setattr(train, "build_eval_step", lambda *args, **kwargs: lambda state, batch: ({}, jnp.array([], dtype=jnp.int32)))
+    monkeypatch.setattr(
+        train,
+        "build_train_step",
+        lambda *args, **kwargs: lambda state, batch, rng: (state, {}),
+    )
+    monkeypatch.setattr(
+        train,
+        "build_eval_step",
+        lambda *args, **kwargs: lambda state, batch: (
+            {},
+            jnp.array([], dtype=jnp.int32),
+        ),
+    )
     monkeypatch.setattr(train, "save_checkpoint", lambda *args, **kwargs: None)
-    monkeypatch.setattr(train, "predict_batches", lambda *args, **kwargs: (jnp.array([], dtype=jnp.int32), jnp.array([], dtype=jnp.int32)))
+    monkeypatch.setattr(
+        train,
+        "predict_batches",
+        lambda *args, **kwargs: (
+            jnp.array([], dtype=jnp.int32),
+            jnp.array([], dtype=jnp.int32),
+        ),
+    )
 
     config = TrainingConfig(
         data=DataModuleConfig(data_dir=tmp_path, batch_size=2),
