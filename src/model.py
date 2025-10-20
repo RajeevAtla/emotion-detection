@@ -1,3 +1,5 @@
+"""Flax ResNet building blocks tailored for emotion detection tasks."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -15,7 +17,23 @@ ModuleDef = Type[nn.Module]
 
 @dataclass(frozen=True)
 class ResNetConfig:
-    """Configuration bundle describing a ResNet variant."""
+    """Configuration bundle describing a ResNet variant.
+
+    Attributes:
+        depth: Depth indicator (e.g., 18 or 34).
+        blocks_per_stage: Number of residual blocks per stage.
+        block: Residual block class used to construct the network.
+        num_classes: Number of output classes in the classifier head.
+        stage_widths: Channel widths per residual stage.
+        stem_width: Channel width of the initial convolutional stem.
+        width_multiplier: Multiplier applied to stage widths.
+        input_channels: Number of channels expected in the input tensor.
+        input_projection_channels: Optional projection width when adapting inputs.
+        checkpoint_path: Optional checkpoint to initialize parameters from.
+        frozen_stages: Stages to freeze during fine-tuning.
+        freeze_stem: Whether to freeze the stem parameters.
+        freeze_classifier: Whether to freeze the classifier head.
+    """
 
     depth: int
     blocks_per_stage: Tuple[int, ...]
@@ -33,7 +51,18 @@ class ResNetConfig:
 
 
 def resnet_config(depth: int, **overrides: object) -> ResNetConfig:
-    """Convenience factory returning standard ResNet-18/34 configs."""
+    """Construct a ``ResNetConfig`` for a canonical depth.
+
+    Args:
+        depth: Target ResNet depth (18, 34, or 50).
+        **overrides: Optional keyword overrides applied to the base config.
+
+    Returns:
+        ResNetConfig: Configuration describing the requested architecture.
+
+    Raises:
+        ValueError: If ``depth`` is not supported.
+    """
     presets: Dict[int, Tuple[Tuple[int, ...], str]] = {
         18: ((2, 2, 2, 2), "basic"),
         34: ((3, 4, 6, 3), "basic"),
@@ -60,9 +89,11 @@ class ResidualBlock(nn.Module):
     use_projection: bool = False
 
     def setup(self) -> None:
+        """Initializes submodules required by the residual block."""
         raise NotImplementedError
 
     def __call__(self, x: jnp.ndarray, *, train: bool = True) -> jnp.ndarray:
+        """Applies the residual block to the input tensor."""
         raise NotImplementedError
 
 
@@ -70,6 +101,7 @@ class BasicBlock(ResidualBlock):
     """Standard 3x3 + 3x3 residual block used by ResNet-18/34."""
 
     def setup(self) -> None:
+        """Constructs convolutional and normalization sublayers."""
         self.conv1 = self.conv(
             self.features,
             kernel_size=(3, 3),
@@ -103,6 +135,18 @@ class BasicBlock(ResidualBlock):
             self.proj_bn = None
 
     def __call__(self, x: jnp.ndarray, *, train: bool = True) -> jnp.ndarray:
+        """Compute the forward pass for the basic residual block.
+
+        Args:
+            x: Input tensor of shape ``(batch, height, width, channels)``.
+            train: Whether the block is run in training mode.
+
+        Returns:
+            jnp.ndarray: Output tensor with residual connection applied.
+
+        Raises:
+            ValueError: If projection is disabled but channel dimensions mismatch.
+        """
         residual = x
         y = self.conv1(x)
         y = self.bn1(y, use_running_average=not train)
@@ -129,6 +173,7 @@ class BottleneckBlock(ResidualBlock):
     bottleneck_ratio: int = 4
 
     def setup(self) -> None:
+        """Constructs bottleneck convolutions and optional projection."""
         inner_features = self.features // self.bottleneck_ratio
         self.conv1 = self.conv(
             inner_features,
@@ -172,6 +217,18 @@ class BottleneckBlock(ResidualBlock):
             self.proj_bn = None
 
     def __call__(self, x: jnp.ndarray, *, train: bool = True) -> jnp.ndarray:
+        """Compute the forward pass for the bottleneck residual block.
+
+        Args:
+            x: Input tensor of shape ``(batch, height, width, channels)``.
+            train: Whether the block is run in training mode.
+
+        Returns:
+            jnp.ndarray: Output tensor after residual addition.
+
+        Raises:
+            ValueError: If projection is disabled but channel dimensions mismatch.
+        """
         residual = x
         y = self.conv1(x)
         y = self.bn1(y, use_running_average=not train)
@@ -214,6 +271,20 @@ class ResNet(nn.Module):
         train: bool = True,
         return_features: bool = False,
     ) -> jnp.ndarray | Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
+        """Run a forward pass through the ResNet.
+
+        Args:
+            x: Input tensor shaped ``(batch, height, width, channels)``.
+            train: Whether to run the network in training mode.
+            return_features: If True, also return intermediate feature maps.
+
+        Returns:
+            Union[jnp.ndarray, Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]]: Logits
+            tensor, optionally paired with a dictionary of named features.
+
+        Raises:
+            ValueError: If input channel dimension does not match the configuration.
+        """
         cfg = self.config
         if cfg.input_projection_channels is not None:
             x = self.conv(
@@ -301,7 +372,26 @@ def create_resnet(
     freeze_stem: bool = False,
     freeze_classifier: bool = False,
 ) -> ResNet:
-    """Factory returning a configured ResNet model."""
+    """Factory returning a configured ResNet model.
+
+    Args:
+        depth: Canonical ResNet depth (18 or 34).
+        num_classes: Number of output classes in the classifier head.
+        input_channels: Number of channels expected by the stem.
+        width_multiplier: Scale factor applied to stage widths.
+        include_top: Whether to include the classifier head.
+        input_projection_channels: Optional projection width for input adaptation.
+        checkpoint_path: Optional checkpoint path stored in the config.
+        frozen_stages: Residual stages to freeze during fine-tuning.
+        freeze_stem: Whether to freeze the stem layers.
+        freeze_classifier: Whether to freeze the classifier layer.
+
+    Returns:
+        ResNet: Configured Flax ResNet module.
+
+    Raises:
+        ValueError: If ``depth`` is unsupported.
+    """
     blocks_per_stage = {
         18: (2, 2, 2, 2),
         34: (3, 4, 6, 3),
@@ -333,7 +423,16 @@ def build_finetune_mask(
     config: ResNetConfig,
     freeze_classifier: Optional[bool] = None,
 ) -> FrozenDict[str, Any]:
-    """Return a boolean mask marking which parameters remain trainable."""
+    """Return a boolean mask marking which parameters remain trainable.
+
+    Args:
+        params: Parameter pytree to derive the mask from.
+        config: ResNet configuration describing frozen components.
+        freeze_classifier: Optional override for classifier freezing.
+
+    Returns:
+        FrozenDict[str, Any]: Boolean pytree matching ``params``.
+    """
     if freeze_classifier is None:
         freeze_classifier = config.freeze_classifier
 
@@ -377,7 +476,15 @@ def maybe_load_pretrained_params(
     *,
     config: ResNetConfig,
 ) -> FrozenDict[str, Any]:
-    """Load parameters from a checkpoint when configured."""
+    """Load parameters from a checkpoint when configured.
+
+    Args:
+        params: Parameter pytree to update.
+        config: ResNet configuration that may specify a checkpoint path.
+
+    Returns:
+        FrozenDict[str, Any]: Parameter pytree with checkpoint values applied.
+    """
     if config.checkpoint_path is None:
         return params
 

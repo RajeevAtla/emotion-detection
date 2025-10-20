@@ -1,3 +1,5 @@
+"""Command-line interface for training and evaluating emotion detection models."""
+
 from __future__ import annotations
 
 import argparse
@@ -19,6 +21,11 @@ from src.train import TrainingConfig, train_and_evaluate
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the training entrypoint.
+
+    Returns:
+        argparse.Namespace: Parsed CLI options.
+    """
     parser = argparse.ArgumentParser(description="Emotion detection training entrypoint.")
     parser.add_argument(
         "--config",
@@ -54,6 +61,18 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_config(path: Path | None) -> Dict[str, Any]:
+    """Load a JSON configuration file if provided.
+
+    Args:
+        path: Path to the JSON file or ``None``.
+
+    Returns:
+        Dict[str, Any]: Parsed configuration dictionary.
+
+    Raises:
+        FileNotFoundError: If ``path`` does not exist.
+        ValueError: If the JSON cannot be parsed.
+    """
     if path is None:
         return {}
     if not path.exists():
@@ -66,6 +85,8 @@ def load_config(path: Path | None) -> Dict[str, Any]:
 
 
 class RuntimeAugmentationModel(BaseModel):
+    """Schema describing augmentation-related configuration."""
+
     horizontal_flip_prob: float = Field(0.5, ge=0.0, le=1.0)
     rotation_degrees: float = Field(15.0, ge=0.0)
     scale_range: Tuple[float, float] = (0.9, 1.1)
@@ -86,6 +107,8 @@ class RuntimeAugmentationModel(BaseModel):
 
 
 class RuntimeDataModel(BaseModel):
+    """Schema describing dataset configuration."""
+
     data_dir: Path
     batch_size: Optional[int] = Field(None, gt=0)
     val_ratio: float = Field(0.1, ge=0.0, lt=1.0)
@@ -99,6 +122,8 @@ class RuntimeDataModel(BaseModel):
 
 
 class RuntimeTrainingModel(BaseModel):
+    """Schema describing top-level training configuration."""
+
     data: RuntimeDataModel
     output_dir: Optional[Path] = None
     model_depth: int = Field(34, ge=1)
@@ -134,6 +159,15 @@ class RuntimeTrainingModel(BaseModel):
 
 
 def _build_dataclass(cls, raw: Mapping[str, Any]) -> Any:
+    """Build a dataclass instance from a raw mapping.
+
+    Args:
+        cls: Dataclass type to instantiate.
+        raw: Mapping of field names to values.
+
+    Returns:
+        Any: Instantiated dataclass.
+    """
     field_names = {field.name for field in dataclasses.fields(cls)}
     kwargs: Dict[str, Any] = {}
     for key, value in raw.items():
@@ -149,6 +183,14 @@ def _build_dataclass(cls, raw: Mapping[str, Any]) -> Any:
 
 
 def resolve_configs(args: argparse.Namespace) -> TrainingConfig:
+    """Resolve CLI arguments and configuration into ``TrainingConfig``.
+
+    Args:
+        args: Parsed command-line arguments.
+
+    Returns:
+        TrainingConfig: Fully populated training configuration.
+    """
     raw_config = load_config(args.config)
 
     payload: Dict[str, Any] = dict(raw_config)
@@ -218,12 +260,25 @@ def resolve_configs(args: argparse.Namespace) -> TrainingConfig:
 
 
 def prepare_environment(seed: int) -> None:
+    """Seed Python, NumPy, and JAX random number generators.
+
+    Args:
+        seed: Seed value used for deterministic behavior.
+    """
     random.seed(seed)
     np.random.seed(seed)
     jax.random.PRNGKey(seed)
 
 
 def to_serializable(obj: Any) -> Any:
+    """Convert complex objects into JSON-serializable structures.
+
+    Args:
+        obj: Object to serialize.
+
+    Returns:
+        Any: JSON-compatible representation.
+    """
     if isinstance(obj, Path):
         return str(obj)
     if isinstance(obj, (np.floating, np.integer)):
@@ -242,6 +297,13 @@ def to_serializable(obj: Any) -> Any:
 
 
 def persist_artifacts(output_dir: Path, config: TrainingConfig, metrics: Dict[str, Any]) -> None:
+    """Write resolved configuration and metrics to disk.
+
+    Args:
+        output_dir: Directory where artifacts are stored.
+        config: Resolved training configuration to persist.
+        metrics: Dictionary of run metrics to write.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     with (output_dir / "config_resolved.json").open("w", encoding="utf-8") as fh:
         json.dump(to_serializable(config), fh, indent=2)
@@ -250,6 +312,14 @@ def persist_artifacts(output_dir: Path, config: TrainingConfig, metrics: Dict[st
 
 
 def summarize(metrics: Dict[str, Any]) -> str:
+    """Create a human-readable summary of key metrics.
+
+    Args:
+        metrics: Dictionary of summary statistics.
+
+    Returns:
+        str: Human-readable summary string.
+    """
     summary_lines = [
         f"Final train loss:     {metrics.get('train_loss', float('nan')):.4f}",
         f"Final train accuracy: {metrics.get('train_accuracy', float('nan')):.4f}",
@@ -263,6 +333,7 @@ def summarize(metrics: Dict[str, Any]) -> str:
 
 
 def main() -> None:
+    """CLI entrypoint for training and evaluation."""
     args = parse_args()
     training_config = resolve_configs(args)
     prepare_environment(training_config.seed)

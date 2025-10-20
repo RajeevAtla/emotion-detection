@@ -1,3 +1,5 @@
+"""Unit tests for data, model, training, and configuration utilities."""
+
 from __future__ import annotations
 
 from dataclasses import replace
@@ -47,6 +49,7 @@ class TrainingConfigSchema(BaseModel):
 
 
 def _make_data_module(tmp_seed: int = 0) -> EmotionDataModule:
+    """Helper to instantiate and set up an ``EmotionDataModule`` for tests."""
     cfg = DataModuleConfig(
         data_dir=Path("data"),
         batch_size=32,
@@ -61,6 +64,7 @@ def _make_data_module(tmp_seed: int = 0) -> EmotionDataModule:
 
 
 def test_data_batch_shapes() -> None:
+    """Verify that training batches have the expected shapes and label range."""
     module = _make_data_module()
     batch_images, batch_labels = next(module.train_batches(rng_seed=123))
     chex.assert_shape(batch_images, (32, 48, 48, 1))
@@ -70,6 +74,7 @@ def test_data_batch_shapes() -> None:
 
 
 def test_data_normalization_stats() -> None:
+    """Confirm that validation batches produce finite, centered statistics."""
     module = _make_data_module(tmp_seed=1)
     batch_images, _ = next(module.val_batches(batch_size=64))
     assert jnp.isfinite(batch_images).all()
@@ -78,6 +83,7 @@ def test_data_normalization_stats() -> None:
 
 
 def test_class_weights_sum_to_one() -> None:
+    """Ensure computed class weights sum to one."""
     module = _make_data_module(tmp_seed=2)
     weights = module.class_weights
     chex.assert_shape(weights, (len(CLASS_NAMES),))
@@ -85,6 +91,7 @@ def test_class_weights_sum_to_one() -> None:
 
 
 def test_augmentations_deterministic_with_seed() -> None:
+    """Check that augmentation results are deterministic for identical seeds."""
     cfg = AugmentationConfig(
         horizontal_flip_prob=1.0,
         rotation_degrees=5.0,
@@ -100,6 +107,7 @@ def test_augmentations_deterministic_with_seed() -> None:
 
 
 def test_metrax_accuracy_metric() -> None:
+    """Validate the MetraX accuracy computation on a small example."""
     preds = jnp.asarray([0, 1, 2, 3, 4, 5, 6])
     labels = jnp.asarray([0, 1, 0, 3, 4, 0, 6])
     metric = mx.Accuracy.from_model_output(predictions=preds, labels=labels)
@@ -108,6 +116,7 @@ def test_metrax_accuracy_metric() -> None:
 
 
 def test_pydantic_config_validation() -> None:
+    """Exercise basic Pydantic validation rules for the helper schema."""
     good_payload = {
         "data_dir": "data",
         "batch_size": 64,
@@ -128,12 +137,14 @@ def test_pydantic_config_validation() -> None:
 
 
 def test_normalize_image_is_noop_without_stats() -> None:
+    """Ensure normalization is a no-op when mean/std are missing."""
     dummy = np.ones((48, 48, 1), dtype=np.float32)
     out = normalize_image(dummy, None, None)
     np.testing.assert_array_equal(dummy, out)
 
 
 def test_resnet_forward_and_features() -> None:
+    """Verify that the ResNet produces logits and feature maps as expected."""
     model = create_resnet(depth=18, num_classes=len(CLASS_NAMES))
     variables = model.init(jax.random.PRNGKey(0), jnp.ones((4, 48, 48, 1)), train=False)
 
@@ -148,6 +159,7 @@ def test_resnet_forward_and_features() -> None:
 
 
 def test_build_finetune_mask_respects_freeze_directives() -> None:
+    """Ensure fine-tune masks honor stage, stem, and classifier freeze flags."""
     base_model = create_resnet(depth=18, num_classes=len(CLASS_NAMES))
     variables = base_model.init(jax.random.PRNGKey(1), jnp.ones((1, 48, 48, 1)), train=False)
     cfg = replace(
@@ -166,6 +178,7 @@ def test_build_finetune_mask_respects_freeze_directives() -> None:
 
 
 def test_maybe_load_pretrained_params_roundtrip(tmp_path: Path) -> None:
+    """Confirm that checkpoint save/load returns identical parameters."""
     model = create_resnet(depth=18, num_classes=len(CLASS_NAMES))
     variables = model.init(jax.random.PRNGKey(2), jnp.ones((1, 48, 48, 1)), train=False)
 
@@ -181,6 +194,7 @@ def test_maybe_load_pretrained_params_roundtrip(tmp_path: Path) -> None:
 
 
 def test_compute_confusion_matrix_counts() -> None:
+    """Validate confusion-matrix counting logic on a toy example."""
     preds = jnp.array([0, 1, 1, 2, 2])
     labels = jnp.array([0, 1, 2, 2, 1])
     cm = compute_confusion_matrix(preds, labels, num_classes=3)
@@ -192,6 +206,7 @@ def test_compute_confusion_matrix_counts() -> None:
 
 
 def test_train_step_gradients_finite(tmp_path: Path) -> None:
+    """Run a training step and assert gradients and loss remain finite."""
     data_cfg = DataModuleConfig(data_dir=Path("data"), batch_size=2, val_ratio=0.1, seed=0)
     train_cfg = TrainingConfig(
         data=data_cfg,
@@ -215,6 +230,7 @@ def test_train_step_gradients_finite(tmp_path: Path) -> None:
 
 
 def test_resolve_configs_from_json_and_cli(tmp_path: Path) -> None:
+    """Ensure configs merge JSON and CLI overrides correctly."""
     config_payload = {
         "data": {
             "data_dir": "data",
@@ -248,6 +264,7 @@ def test_resolve_configs_from_json_and_cli(tmp_path: Path) -> None:
 
 
 def test_resolve_configs_invalid_payload(tmp_path: Path) -> None:
+    """Show that invalid configuration payloads raise validation errors."""
     config_payload = {
         "data": {
             "data_dir": "data",

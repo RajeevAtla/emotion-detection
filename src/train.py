@@ -1,3 +1,5 @@
+"""Training loops, utilities, and evaluation helpers for emotion detection."""
+
 from __future__ import annotations
 
 import math
@@ -23,7 +25,34 @@ from src.model import ResNet, build_finetune_mask, create_resnet, maybe_load_pre
 
 @dataclass
 class TrainingConfig:
-    """Collection of knobs driving the training loop."""
+    """Collection of knobs driving the training loop.
+
+    Attributes:
+        data: Data module configuration describing dataset handling.
+        output_dir: Directory for checkpoints, logs, and metrics.
+        model_depth: ResNet depth to instantiate.
+        width_multiplier: Width multiplier applied to stage channels.
+        dropout_rate: Dropout probability applied before classification.
+        num_epochs: Number of training epochs.
+        batch_size: Number of samples per batch.
+        learning_rate: Peak learning rate used after warmup.
+        min_learning_rate: Minimum learning rate reached after decay.
+        warmup_epochs: Count of epochs used for linear warmup.
+        weight_decay: Weight decay applied by the optimizer.
+        gradient_accumulation_steps: Gradient accumulation factor.
+        label_smoothing: Label smoothing factor for cross entropy.
+        seed: Global PRNG seed.
+        log_every: Training-step logging interval.
+        checkpoint_every: Epoch interval for writing checkpoints.
+        max_checkpoints: Maximum number of checkpoints to retain.
+        use_mixed_precision: Whether to enable mixed precision training.
+        patience: Optional early-stopping patience in epochs.
+        freeze_stem: Whether to freeze stem parameters.
+        freeze_classifier: Whether to freeze classifier parameters.
+        frozen_stages: Tuple of stage indices to freeze.
+        pretrained_checkpoint: Optional checkpoint path for initialization.
+        resume_checkpoint: Optional checkpoint path to resume training.
+    """
 
     data: DataModuleConfig
     output_dir: Path
@@ -67,6 +96,15 @@ class TrainState(train_state.TrainState):
 
 
 def create_learning_rate_schedule(config: TrainingConfig, steps_per_epoch: int) -> optax.Schedule:
+    """Build a learning rate schedule with warmup followed by cosine decay.
+
+    Args:
+        config: Training configuration supplying learning rate hyperparameters.
+        steps_per_epoch: Number of optimizer steps executed per epoch.
+
+    Returns:
+        optax.Schedule: Callable returning a scalar learning rate.
+    """
     warmup_steps = max(1, config.warmup_epochs * steps_per_epoch)
     total_steps = max(1, config.num_epochs * steps_per_epoch)
     if warmup_steps >= total_steps:
@@ -92,6 +130,16 @@ def create_learning_rate_schedule(config: TrainingConfig, steps_per_epoch: int) 
 
 
 def create_optimizer(config: TrainingConfig, lr_schedule: optax.Schedule, mask: Optional[FrozenDict] = None) -> optax.GradientTransformation:
+    """Create the optimizer transformation for training.
+
+    Args:
+        config: Training configuration supplying optimizer hyperparameters.
+        lr_schedule: Learning rate schedule callable.
+        mask: Optional mask marking trainable parameters.
+
+    Returns:
+        optax.GradientTransformation: Configured optimizer chain.
+    """
     tx = optax.adamw(
         learning_rate=lr_schedule,
         weight_decay=config.weight_decay,
@@ -109,6 +157,17 @@ def create_train_state(
     config: TrainingConfig,
     lr_schedule: optax.Schedule,
 ) -> TrainState:
+    """Initialize model parameters and optimizer state.
+
+    Args:
+        rng: PRNG key used for parameter initialization.
+        model: ResNet module to initialize.
+        config: Training configuration controlling optimizer behavior.
+        lr_schedule: Learning rate schedule used by the optimizer.
+
+    Returns:
+        TrainState: Populated training state ready for training.
+    """
     example = jnp.zeros((1, 48, 48, model.config.input_channels), dtype=jnp.float32)
     variables = model.init(rng, example, train=True)
     params = variables["params"]
@@ -154,6 +213,17 @@ def cross_entropy_loss(
     label_smoothing: float = 0.0,
     class_weights: Optional[jnp.ndarray] = None,
 ) -> jnp.ndarray:
+    """Compute label-smoothed cross-entropy with optional class weighting.
+
+    Args:
+        logits: Logit tensor of shape ``(batch, num_classes)``.
+        labels: Integer labels of shape ``(batch,)``.
+        label_smoothing: Amount of label smoothing to apply.
+        class_weights: Optional class weights broadcast across the batch.
+
+    Returns:
+        jnp.ndarray: Scalar loss averaged across the batch.
+    """
     num_classes = logits.shape[-1]
     one_hot = jax.nn.one_hot(labels, num_classes)
     if label_smoothing > 0.0:
@@ -168,7 +238,16 @@ def cross_entropy_loss(
 
 
 def compute_confusion_matrix(preds: jnp.ndarray, labels: jnp.ndarray, num_classes: int) -> np.ndarray:
-    """Return confusion matrix with shape (num_classes, num_classes)."""
+    """Return confusion matrix with shape ``(num_classes, num_classes)``.
+
+    Args:
+        preds: Predicted class indices.
+        labels: Ground-truth class indices.
+        num_classes: Total number of classes.
+
+    Returns:
+        np.ndarray: Confusion matrix where rows correspond to labels.
+    """
     preds_np = np.asarray(preds)
     labels_np = np.asarray(labels)
     cm = np.zeros((num_classes, num_classes), dtype=np.int32)
@@ -178,7 +257,15 @@ def compute_confusion_matrix(preds: jnp.ndarray, labels: jnp.ndarray, num_classe
 
 
 def format_confusion_matrix(cm: np.ndarray, class_names: Iterable[str]) -> str:
-    """Format confusion matrix as a markdown table string."""
+    """Format confusion matrix as a Markdown table string.
+
+    Args:
+        cm: Confusion matrix array.
+        class_names: Iterable of class names aligning with matrix rows.
+
+    Returns:
+        str: Markdown-formatted confusion matrix.
+    """
     header = [" "] + list(class_names)
     lines = [" | ".join(header)]
     lines.append(" | ".join(["---"] * len(header)))
@@ -193,9 +280,19 @@ def build_train_step(
     config: TrainingConfig,
     class_weights: Optional[jnp.ndarray],
 ):
-    """Create a jit-compiled training step function."""
+    """Create a jit-compiled training step function.
+
+    Args:
+        model: ResNet module to evaluate.
+        config: Training configuration controlling behaviors.
+        class_weights: Optional class weights applied to the loss.
+
+    Returns:
+        Callable: A function executing a single training step.
+    """
 
     def loss_fn(params, batch_stats, images, labels, rng):
+        """Compute loss and metrics for a single batch."""
         variables = {"params": params, "batch_stats": batch_stats}
         logits, new_model_state = model.apply(
             variables,
@@ -221,6 +318,7 @@ def build_train_step(
         return loss, (metrics, new_model_state)
 
     def train_step(state: TrainState, batch: Tuple[jnp.ndarray, jnp.ndarray], rng: jax.Array) -> Tuple[TrainState, Dict[str, jnp.ndarray]]:
+        """Execute one optimizer update using the provided batch."""
         images, labels = batch
         if config.use_mixed_precision:
             images = images.astype(jnp.float16)
@@ -262,7 +360,17 @@ def build_train_step(
 
 
 def build_eval_step(model: ResNet, config: TrainingConfig):
+    """Create a JIT-compiled evaluation function.
+
+    Args:
+        model: ResNet module to evaluate.
+        config: Training configuration controlling behaviors.
+
+    Returns:
+        Callable: Function computing evaluation metrics for a batch.
+    """
     def eval_step(state: TrainState, batch: Tuple[jnp.ndarray, jnp.ndarray]) -> Tuple[Dict[str, jnp.ndarray], jnp.ndarray]:
+        """Evaluate a batch and return metrics and predictions."""
         images, labels = batch
         if config.use_mixed_precision:
             images = images.astype(jnp.float16)
@@ -289,6 +397,13 @@ def build_eval_step(model: ResNet, config: TrainingConfig):
 
 
 def save_checkpoint(state: TrainState, config: TrainingConfig, epoch: int) -> None:
+    """Persist the current training state to disk.
+
+    Args:
+        state: Training state containing parameters and optimizer state.
+        config: Training configuration providing output directory metadata.
+        epoch: Epoch number associated with the checkpoint.
+    """
     payload = {
         "params": state.params,
         "batch_stats": state.batch_stats,
@@ -309,6 +424,14 @@ def save_checkpoint(state: TrainState, config: TrainingConfig, epoch: int) -> No
 
 
 def maybe_restore_checkpoint(config: TrainingConfig) -> Optional[Dict[str, Any]]:
+    """Restore a checkpoint if ``resume_checkpoint`` is specified.
+
+    Args:
+        config: Training configuration referencing an optional checkpoint.
+
+    Returns:
+        Optional[Dict[str, Any]]: Restored checkpoint payload or ``None``.
+    """
     if config.resume_checkpoint is None:
         return None
     checkpointer = ocp.PyTreeCheckpointer()
@@ -321,6 +444,17 @@ def predict_batches(
     batches: Iterable[Tuple[jnp.ndarray, jnp.ndarray]],
     config: TrainingConfig,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Generate predictions for an iterator of batches.
+
+    Args:
+        state: Training state containing model parameters.
+        model: ResNet module used for inference.
+        batches: Iterable yielding image and label tensors.
+        config: Training configuration controlling precision.
+
+    Returns:
+        Tuple[jnp.ndarray, jnp.ndarray]: Prediction and label arrays.
+    """
     preds = []
     labels_list = []
     for images, labels in batches:
@@ -338,7 +472,14 @@ def predict_batches(
 
 
 def train_and_evaluate(config: TrainingConfig) -> Dict[str, Any]:
-    """End-to-end training orchestration."""
+    """Run the full training, validation, and test evaluation pipeline.
+
+    Args:
+        config: Training configuration describing the experiment.
+
+    Returns:
+        Dict[str, Any]: Metrics summarizing the training run.
+    """
 
     rng = jax.random.PRNGKey(config.seed)
 

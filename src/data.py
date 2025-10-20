@@ -1,3 +1,5 @@
+"""Data loading, augmentation, and preprocessing utilities for emotion detection."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -30,7 +32,13 @@ DEFAULT_STATS_FILENAME = "stats_train.json"
 
 @dataclass(frozen=True)
 class DatasetStats:
-    """Simple container for dataset-wide normalization statistics."""
+    """Dataset-level statistics used for normalization.
+
+    Attributes:
+        mean: Mean pixel intensity across the dataset in the [0, 1] range.
+        std: Standard deviation of pixel intensities.
+        num_pixels: Total number of pixels contributing to the statistics.
+    """
 
     mean: float
     std: float
@@ -39,7 +47,15 @@ class DatasetStats:
 
 @dataclass
 class AugmentationConfig:
-    """Configuration for stochastic image augmentations."""
+    """Configuration options controlling stochastic image augmentations.
+
+    Attributes:
+        horizontal_flip_prob: Probability of performing a horizontal flip.
+        rotation_degrees: Maximum absolute rotation in degrees.
+        scale_range: Inclusive range of random resized crop scales.
+        elastic_blur_sigma: Optional Gaussian blur sigma for elastic effect.
+        enabled: Whether augmentation is enabled.
+    """
 
     horizontal_flip_prob: float = 0.5
     rotation_degrees: float = 15.0
@@ -48,7 +64,11 @@ class AugmentationConfig:
     enabled: bool = True
 
     def clamp(self) -> AugmentationConfig:
-        """Clamp numeric ranges to sane values."""
+        """Return a sanitized copy of the augmentation configuration.
+
+        Returns:
+            AugmentationConfig: Clamped augmentation configuration.
+        """
         lo, hi = self.scale_range
         lo = max(0.1, float(lo))
         hi = max(lo, float(hi))
@@ -63,7 +83,12 @@ class AugmentationConfig:
 
 @dataclass(frozen=True)
 class Sample:
-    """Represents a single image example and its numeric label."""
+    """Represents a single image example and its numeric label.
+
+    Attributes:
+        path: Filesystem path to the image file.
+        label: Integer label matching class index.
+    """
 
     path: Path
     label: int
@@ -71,7 +96,20 @@ class Sample:
 
 @dataclass
 class DataModuleConfig:
-    """Runtime configuration governing how datasets are prepared."""
+    """Runtime configuration governing dataset preparation.
+
+    Attributes:
+        data_dir: Root directory containing train/test folders.
+        batch_size: Batch size used for loaders.
+        val_ratio: Fraction of training data reserved for validation.
+        seed: PRNG seed applied to deterministic operations.
+        drop_last: Whether to drop incomplete batches.
+        mean: Optional precomputed dataset mean.
+        std: Optional precomputed dataset standard deviation.
+        augment: If False, augmentation is skipped even for training.
+        augmentation: Augmentation-specific configuration.
+        stats_cache_path: Optional path to cache statistics JSON.
+    """
 
     data_dir: Path
     batch_size: int = 128
@@ -91,9 +129,14 @@ class DataModuleConfig:
 
 
 class EmotionDataModule:
-    """Utility responsible for loading, splitting, and batching the FER dataset."""
+    """Loads, splits, and batches the emotion recognition dataset."""
 
     def __init__(self, config: DataModuleConfig) -> None:
+        """Initializes the data module with its configuration.
+
+        Args:
+            config: Data module configuration.
+        """
         self.config = config
         self._train_samples: List[Sample] = []
         self._val_samples: List[Sample] = []
@@ -103,18 +146,38 @@ class EmotionDataModule:
 
     @property
     def stats(self) -> DatasetStats:
+        """Returns dataset statistics computed during setup.
+
+        Returns:
+            DatasetStats: Mean and standard deviation values.
+
+        Raises:
+            RuntimeError: If setup has not been executed.
+        """
         if self._stats is None:
             raise RuntimeError("EmotionDataModule.setup must be called before accessing stats.")
         return self._stats
 
     @property
     def class_weights(self) -> jnp.ndarray:
+        """Returns class-balanced weights derived from the training split.
+
+        Returns:
+            jnp.ndarray: Normalized class weights.
+
+        Raises:
+            RuntimeError: If setup has not been executed.
+        """
         if self._class_weights is None:
             raise RuntimeError("EmotionDataModule.setup must be called before accessing class weights.")
         return self._class_weights
 
     def setup(self, force_recompute_stats: bool = False) -> None:
-        """Scan disk, create splits, and compute normalization statistics."""
+        """Initializes dataset splits, statistics, and class weights.
+
+        Args:
+            force_recompute_stats: If True, recompute statistics even if cached.
+        """
         cfg = self.config
         train_samples = _scan_split(cfg.data_dir, split="train")
         test_samples = _scan_split(cfg.data_dir, split="test")
@@ -146,7 +209,16 @@ class EmotionDataModule:
         rng_seed: Optional[int] = None,
         drop_last: Optional[bool] = None,
     ) -> Iterator[Tuple[jnp.ndarray, jnp.ndarray]]:
-        """Yield normalized batches for the training split."""
+        """Yield normalized batches for the training split.
+
+        Args:
+            batch_size: Optional override for batch size.
+            rng_seed: Seed for shuffle and augmentation randomness.
+            drop_last: Optional override for dropping incomplete batches.
+
+        Returns:
+            Iterator[Tuple[jnp.ndarray, jnp.ndarray]]: Batched images and labels.
+        """
         return self._iter_batches(
             self._train_samples,
             batch_size=batch_size,
@@ -163,7 +235,16 @@ class EmotionDataModule:
         rng_seed: Optional[int] = None,
         drop_last: Optional[bool] = None,
     ) -> Iterator[Tuple[jnp.ndarray, jnp.ndarray]]:
-        """Yield normalized batches for the validation split."""
+        """Yield normalized batches for the validation split.
+
+        Args:
+            batch_size: Optional override for batch size.
+            rng_seed: Seed controlling deterministic iteration order.
+            drop_last: Optional override for dropping incomplete batches.
+
+        Returns:
+            Iterator[Tuple[jnp.ndarray, jnp.ndarray]]: Batched images and labels.
+        """
         return self._iter_batches(
             self._val_samples,
             batch_size=batch_size,
@@ -180,7 +261,16 @@ class EmotionDataModule:
         rng_seed: Optional[int] = None,
         drop_last: Optional[bool] = None,
     ) -> Iterator[Tuple[jnp.ndarray, jnp.ndarray]]:
-        """Yield normalized batches for the test split."""
+        """Yield normalized batches for the test split.
+
+        Args:
+            batch_size: Optional override for batch size.
+            rng_seed: Seed controlling deterministic iteration order.
+            drop_last: Optional override for dropping incomplete batches.
+
+        Returns:
+            Iterator[Tuple[jnp.ndarray, jnp.ndarray]]: Batched images and labels.
+        """
         return self._iter_batches(
             self._test_samples,
             batch_size=batch_size,
@@ -200,6 +290,19 @@ class EmotionDataModule:
         shuffle: bool,
         drop_last: Optional[bool],
     ) -> Iterator[Tuple[jnp.ndarray, jnp.ndarray]]:
+        """Internal helper that batches and normalizes a sample collection.
+
+        Args:
+            samples: Sequence of Sample instances to iterate.
+            batch_size: Effective batch size for iteration.
+            augment: Whether to apply stochastic augmentation.
+            rng_seed: Seed for deterministic shuffling/augmentations.
+            shuffle: Whether to shuffle sample indices.
+            drop_last: Whether to drop incomplete final batch.
+
+        Returns:
+            Iterator[Tuple[jnp.ndarray, jnp.ndarray]]: Batched tensors.
+        """
         if not samples:
             return iter(())
 
@@ -234,7 +337,11 @@ class EmotionDataModule:
             yield batch_images, batch_labels
 
     def split_counts(self) -> Dict[str, Dict[str, int]]:
-        """Return class distributions for each split."""
+        """Return class distributions for each split.
+
+        Returns:
+            Dict[str, Dict[str, int]]: Mapping of split names to class counts.
+        """
         return {
             "train": compute_class_distribution(self._train_samples),
             "val": compute_class_distribution(self._val_samples),
@@ -243,6 +350,19 @@ class EmotionDataModule:
 
 
 def _scan_split(data_dir: Path, *, split: str) -> List[Sample]:
+    """Scan a dataset split directory and collect samples.
+
+    Args:
+        data_dir: Root dataset directory.
+        split: Split name (e.g., ``"train"`` or ``"test"``).
+
+    Returns:
+        List[Sample]: Collected samples for the split.
+
+    Raises:
+        FileNotFoundError: If the split directory does not exist.
+        ValueError: If an unexpected class subdirectory is encountered.
+    """
     split_dir = data_dir / split
     if not split_dir.exists():
         raise FileNotFoundError(f"Expected split directory at {split_dir}")
@@ -267,7 +387,16 @@ def stratified_split(
     val_ratio: float,
     seed: int,
 ) -> Tuple[List[int], List[int]]:
-    """Create a stratified train/validation split."""
+    """Create stratified train and validation index lists.
+
+    Args:
+        samples: Sequence of samples within the training split.
+        val_ratio: Desired validation ratio (clamped to [0, 0.5]).
+        seed: Random seed used when shuffling indices.
+
+    Returns:
+        Tuple[List[int], List[int]]: Training indices, validation indices.
+    """
     if not samples:
         return [], []
     val_ratio = max(0.0, min(0.5, float(val_ratio)))
@@ -299,6 +428,14 @@ def stratified_split(
 
 
 def compute_class_distribution(samples: Sequence[Sample]) -> Dict[str, int]:
+    """Count the number of samples per class.
+
+    Args:
+        samples: Sequence of samples to count.
+
+    Returns:
+        Dict[str, int]: Mapping from class name to sample count.
+    """
     counts = {name: 0 for name in CLASS_NAMES}
     for sample in samples:
         counts[CLASS_NAMES[sample.label]] += 1
@@ -306,6 +443,15 @@ def compute_class_distribution(samples: Sequence[Sample]) -> Dict[str, int]:
 
 
 def compute_class_weights(samples: Sequence[Sample], num_classes: int) -> jnp.ndarray:
+    """Derive class-balanced weights for loss scaling.
+
+    Args:
+        samples: Sequence of training samples.
+        num_classes: Total number of classes.
+
+    Returns:
+        jnp.ndarray: Normalized class weights.
+    """
     counts = np.zeros(num_classes, dtype=np.float64)
     for sample in samples:
         counts[sample.label] += 1
@@ -321,7 +467,16 @@ def compute_dataset_statistics(
     cache_path: Optional[Path] = None,
     force: bool = False,
 ) -> DatasetStats:
-    """Compute (or load) per-channel normalization statistics."""
+    """Compute or load normalization statistics for a sample collection.
+
+    Args:
+        samples: Sequence of samples contributing to statistics.
+        cache_path: Optional JSON cache to read/write.
+        force: If True, recompute statistics ignoring any cache.
+
+    Returns:
+        DatasetStats: Mean, standard deviation, and pixel count.
+    """
     if cache_path is not None and cache_path.exists() and not force:
         with cache_path.open("r", encoding="utf-8") as fh:
             data = json.load(fh)
@@ -359,7 +514,16 @@ def apply_augmentations(
     rng: np.random.Generator,
     config: AugmentationConfig,
 ) -> np.ndarray:
-    """Apply stochastic augmentations to a single image."""
+    """Apply stochastic augmentations to a single image sample.
+
+    Args:
+        image: Input image array shaped ``(H, W, C)`` with ``C=1``.
+        rng: NumPy random generator controlling augmentation.
+        config: Augmentation configuration to apply.
+
+    Returns:
+        np.ndarray: Augmented image array.
+    """
     aug_cfg = config.clamp()
     augmented = image
 
@@ -386,12 +550,30 @@ def apply_augmentations(
 
 
 def normalize_image(image: np.ndarray, mean: Optional[float], std: Optional[float]) -> np.ndarray:
+    """Normalize image tensor by mean and standard deviation.
+
+    Args:
+        image: Image array with values in [0, 1].
+        mean: Dataset mean or ``None`` to skip normalization.
+        std: Dataset standard deviation or ``None`` to skip normalization.
+
+    Returns:
+        np.ndarray: Normalized image array.
+    """
     if mean is None or std is None:
         return image
     return (image - float(mean)) / float(std)
 
 
 def _load_image(path: Path) -> np.ndarray:
+    """Load an image from disk as a grayscale NumPy array.
+
+    Args:
+        path: Filesystem path to the image.
+
+    Returns:
+        np.ndarray: Unsigned byte image with shape ``(H, W, 1)``.
+    """
     with Image.open(path) as img:
         img = img.convert("L")
         arr = np.asarray(img, dtype=np.uint8)
@@ -404,7 +586,16 @@ def _random_resized_crop(
     rng: np.random.Generator,
     scale_range: Tuple[float, float],
 ) -> np.ndarray:
-    """Mimic torchvision RandomResizedCrop for square grayscale inputs."""
+    """Perform a random resized crop similar to torchvision implementation.
+
+    Args:
+        image: Input single-channel image array.
+        rng: NumPy random generator.
+        scale_range: Inclusive scale factor range to sample from.
+
+    Returns:
+        np.ndarray: Cropped (and possibly rescaled) image.
+    """
     h, w, c = image.shape
     assert c == 1, "Random resized crop assumes single-channel images."
 
@@ -447,7 +638,15 @@ def _random_resized_crop(
 
 
 def _rotate_image(image: np.ndarray, angle: float) -> np.ndarray:
-    """Rotate an image around its center without changing its shape."""
+    """Rotate a single-channel image around its center.
+
+    Args:
+        image: 2D image array with values in [0, 1].
+        angle: Rotation angle in degrees.
+
+    Returns:
+        np.ndarray: Rotated image array.
+    """
     pil_img = Image.fromarray((np.clip(image, 0.0, 1.0) * 255).astype(np.uint8))
     rotated = pil_img.rotate(angle, resample=Image.BILINEAR, fillcolor=0)
     return np.asarray(rotated, dtype=np.float32) / 255.0
