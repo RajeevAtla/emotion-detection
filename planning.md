@@ -105,16 +105,16 @@ GitHub Actions CI
 Immediate Implementation Tasks (2025-10-20)
 -------------------------------------------
 
-- [ ] Wire end-to-end F1 tracking alongside accuracy:
+- [x] Wire end-to-end F1 tracking alongside accuracy:
   * Introduce helper(s) in `src/train.py` to derive per-class precision/recall/F1 from class counts or a confusion matrix.
   * Extend `build_eval_step`/`train_and_evaluate` to aggregate validation and test predictions so that per-epoch F1 and macro-F1 are computed even when batches are empty.
   * Log the new metrics to TensorBoard (`epoch/val_f1`, `epoch/val_macro_f1`, etc.), persist them into the `history` payload, and surface them in the returned `TrainingSummary` so CLI summaries and JSON artifacts capture the richer metric set.
   * Update/augment unit tests in `tests/test_train.py` to assert the new metrics behave correctly for both populated and empty iterator scenarios.
-- [ ] Ensure the best validation checkpoint feeds test evaluation:
+- [x] Ensure the best validation checkpoint feeds test evaluation:
   * Track the checkpoint directory corresponding to the lowest validation loss during training and, after training ends, reload that state (when on-disk checkpoints exist) before running `predict_batches`.
   * Guard against stubbed/no-op checkpoint writers in tests by verifying path existence, and adjust tests to exercise the best-checkpoint reload path.
   * Persist the identifier for the best checkpoint (path or epoch) inside the training summary to aid experiment reproducibility.
-- [ ] Provide a canonical JSON config for the CLI workflow:
+- [x] Provide a canonical JSON config for the CLI workflow:
   * Create a `configs/example.json` that mirrors the CLI schema (data paths, augmentation knobs, training hyperparameters) so README quick-start commands succeed out of the box.
   * Reference the sample config in the README quick-start block and ensure it reflects the new metric logging expectations (e.g., mention F1 outputs).
   * Add a regression test or lightweight validation step that loads the example config to catch schema drift.
