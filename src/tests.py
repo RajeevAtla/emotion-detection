@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import replace
+import json
 from pathlib import Path
 from typing import Callable
+from types import SimpleNamespace
 
 import chex
 import jax
@@ -13,6 +14,7 @@ import metrax as mx
 import orbax.checkpoint as ocp
 from flax.core import freeze
 from pydantic import BaseModel, Field, ValidationError
+import pytest
 
 from src.data import (
     AugmentationConfig,
@@ -24,6 +26,7 @@ from src.data import (
     normalize_image,
 )
 from src.model import build_finetune_mask, create_resnet, maybe_load_pretrained_params
+from src.main import RuntimeTrainingModel, resolve_configs
 from src.train import (
     TrainingConfig,
     build_train_step,
@@ -206,6 +209,63 @@ def test_train_step_gradients_finite(tmp_path: Path) -> None:
     labels = jnp.zeros((train_cfg.batch_size,), dtype=jnp.int32)
     new_state, metrics = train_step(state, (images, labels), jax.random.PRNGKey(1))
 
-    chex.assert_tree_all_equal_structs(state.params, new_state.params)
+    chex.assert_trees_all_equal_structs(state.params, new_state.params)
     chex.assert_tree_all_finite(new_state.params)
     assert jnp.isfinite(metrics["loss"])
+
+
+def test_resolve_configs_from_json_and_cli(tmp_path: Path) -> None:
+    config_payload = {
+        "data": {
+            "data_dir": "data",
+            "batch_size": 16,
+            "val_ratio": 0.2,
+        },
+        "num_epochs": 5,
+        "batch_size": 16,
+        "learning_rate": 1e-3,
+    }
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config_payload))
+
+    args = SimpleNamespace(
+        config=config_path,
+        output_dir=tmp_path / "runs",
+        resume=None,
+        seed=42,
+        num_epochs=3,
+        experiment_name="cli-test",
+    )
+
+    training_config = resolve_configs(args)
+    assert training_config.output_dir.parent == (tmp_path / "runs")
+    assert str(training_config.output_dir.name).endswith("cli-test")
+    assert training_config.num_epochs == 3
+    assert training_config.seed == 42
+    assert training_config.data.seed == 42
+    assert training_config.batch_size == training_config.data.batch_size == 16
+    assert training_config.data.data_dir == Path("data")
+
+
+def test_resolve_configs_invalid_payload(tmp_path: Path) -> None:
+    config_payload = {
+        "data": {
+            "data_dir": "data",
+            "val_ratio": 1.2,
+        },
+        "batch_size": 8,
+    }
+    config_path = tmp_path / "bad_config.json"
+    config_path.write_text(json.dumps(config_payload))
+
+    args = SimpleNamespace(
+        config=config_path,
+        output_dir=tmp_path / "runs",
+        resume=None,
+        seed=None,
+        num_epochs=None,
+        experiment_name=None,
+    )
+
+    with pytest.raises(ValidationError):
+        resolve_configs(args)
