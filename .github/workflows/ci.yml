@@ -25,10 +25,10 @@ jobs:
         run: uv sync --dev
 
       - name: Run Ruff
-        run: uv tool run ruff check
+        run: uv run ruff check
 
       - name: Run Ty
-        run: uv tool run ty check src
+        run: uv run ty check src
 
       - name: Run Pytest
         run: uv run pytest --cov=src
