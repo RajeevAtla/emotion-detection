@@ -65,7 +65,17 @@ Emotion Detection ResNet Plan
 - [x] Design Pydantic schemas for experiment configuration, dataset metadata, and training hyperparameters — `TrainingConfigSchema` in `src/tests.py`.
 - [x] Implement Chex shape/dtype tests for data loaders, augmentations, and batching utilities — `src/tests.py::test_data_batch_shapes`, `test_data_normalization_stats`, and `test_augmentations_deterministic_with_seed`.
 - [x] Add Chex module/property tests verifying ResNet block outputs, parameter trees, and initialization behavior - see `src/tests.py::test_resnet_forward_and_features`, `test_build_finetune_mask_respects_freeze_directives`, and `test_maybe_load_pretrained_params_roundtrip`.
-- [ ] Create Chex-assisted training step assertions (loss finite, gradients not NaN/Inf, optimizer state structure).
+- [x] Create Chex-assisted training step assertions (loss finite, gradients not NaN/Inf, optimizer state structure) - covered by \src/tests.py::test_train_step_gradients_finite\.
 - [x] Validate evaluation metrics integration by comparing MetraX outputs against handcrafted samples - `src/tests.py::test_metrax_accuracy_metric`.
 - [x] Provide CLI entry or pytest-style harness (e.g., `uv run pytest src/tests.py`) to run targeted JIT-safe tests without side effects - project now uses pytest via `uv run python -m pytest src/tests.py`.
 - [x] Testing notes - current pytest suite (`uv run python -m pytest src/tests.py`) covers data loaders, augmentation determinism, ResNet forward shapes, finetuning masks, checkpoint round-trips, confusion-matrix utilities, and training-step gradient sanity checks.
+
+Next Test Enhancements
+----------------------
+
+- [ ] Move tests into dedicated `tests/` package to mirror production modules and ease discovery.
+- [ ] Introduce additional integration tests covering end-to-end CLI flows (`src/main.py`) and train/eval loops for higher coverage.
+- [ ] Increase unit test granularity across `src/train.py` (scheduler, checkpointing, logging) and `src/main.py` (serialization, overrides) to reach 100% coverage.
+- [ ] Add regression tests for data augmentation edge cases (extreme scales, disabled augment, cached statistics) to cover remaining branches.
+- [ ] Track coverage progress via `pytest-cov` in CI, gating the suite on 100% statement coverage.
+
