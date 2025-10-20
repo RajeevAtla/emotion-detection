@@ -100,3 +100,11 @@ Further Improvements
 - Add dataset versioning hooks (e.g., DVC or git-lfs pointers) to manage future data updates.
 - Provide rich experiment dashboards (Weights & Biases or equivalent) for long-running training jobs.
 - Investigate lightweight distillation models to accelerate inference on edge devices.
+
+Orbax Warning Mitigation
+------------------------
+
+- [ ] Investigate Orbax warning root causes and document behavior across TPU/GPU topologies.
+- [ ] Update checkpoint save/restore utilities to persist and reuse sharding metadata explicitly.
+- [ ] Add regression tests ensuring no warnings are emitted during checkpoint save/restore.
+- [ ] Coordinate with upstream Orbax releases or contribute fixes if local adjustments are insufficient.
