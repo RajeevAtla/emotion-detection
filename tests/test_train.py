@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 import math
 import warnings
@@ -11,6 +12,7 @@ from typing import cast
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 import pytest
 from flax.core import freeze
@@ -184,6 +186,25 @@ def test_cross_entropy_loss_with_smoothing_and_weights() -> None:
         logits, labels, label_smoothing=0.1, class_weights=weights
     )
     assert float(loss) > 0
+
+
+def test_compute_f1_metrics_edge_cases() -> None:
+    """Test F1 metric helper across empty, nan, and degenerate inputs."""
+    empty_cm = np.zeros((0, 0), dtype=np.int32)
+    micro, macro, per_class = train.compute_f1_metrics(empty_cm)
+    assert math.isnan(micro)
+    assert math.isnan(macro)
+    assert per_class == []
+
+    zero_cm = np.zeros((2, 2), dtype=np.int32)
+    micro, macro, per_class = train.compute_f1_metrics(zero_cm)
+    assert math.isnan(micro)
+    assert math.isnan(macro)
+    assert all(math.isnan(float(score)) for score in per_class)
+
+    degenerate_cm = np.array([[0, 1], [0, 0]], dtype=np.int32)
+    micro, macro, per_class = train.compute_f1_metrics(degenerate_cm)
+    assert per_class[0] == 0.0
 
 
 def test_build_train_step_standard() -> None:
@@ -430,6 +451,14 @@ def test_train_and_evaluate_with_stubs(monkeypatch, tmp_path: Path) -> None:
 
     metrics = train_and_evaluate(config)
     assert "history" in metrics
+    assert metrics["val_f1"] == pytest.approx(1.0)
+    assert metrics["val_macro_f1"] == pytest.approx(1.0)
+    assert metrics["test_f1"] == pytest.approx(1.0)
+    assert metrics["test_macro_f1"] == pytest.approx(1.0)
+    assert metrics["best_checkpoint"] is not None
+    assert metrics["best_epoch"] == 1
+    assert metrics["history"]["val_f1"][-1] == pytest.approx(1.0)
+    assert metrics["history"]["val_macro_f1"][-1] == pytest.approx(1.0)
 
 
 def test_build_eval_step_mixed_precision_casts() -> None:
@@ -628,6 +657,289 @@ def test_train_and_evaluate_handles_restore_and_empty_metrics(
     metrics = train_and_evaluate(config)
     assert math.isnan(metrics["history"]["train_loss"][0])
     assert math.isnan(metrics["history"]["val_loss"][0])
+    assert math.isnan(metrics["history"]["val_f1"][0])
+    assert math.isnan(metrics["history"]["val_macro_f1"][0])
+    assert metrics["test_f1"] is None
+    assert metrics["test_macro_f1"] is None
+    assert metrics["best_checkpoint"] is None
+
+
+def test_train_and_evaluate_restores_best_checkpoint_for_test(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Ensure the best checkpoint is reloaded before test evaluation."""
+
+    saved_payloads: dict[str, Mapping[str, object]] = {}
+
+    class RecordingCheckpointer:
+        """Stub orbax checkpointer that caches payloads in memory."""
+
+        def save(self, path, payload, save_args=None, force=True):
+            saved_payloads[path] = payload
+            Path(path).mkdir(parents=True, exist_ok=True)
+
+        def restore(self, path, item, restore_args=None):
+            return saved_payloads.get(path)
+
+    monkeypatch.setattr(train.ocp, "PyTreeCheckpointer", RecordingCheckpointer)
+
+    class RecordingWriter:
+        """Stub writer that ignores scalar/text writes."""
+
+        def __init__(self, log_dir):
+            self.log_dir = log_dir
+
+        def add_scalars(self, *args, **kwargs):
+            pass
+
+        def add_text(self, *args, **kwargs):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(train, "SummaryWriter", RecordingWriter)
+
+    class MinimalDataModule:
+        """Data module yielding exactly one batch per split."""
+
+        def __init__(self, config):
+            self.config = config
+            self.class_weights = jnp.ones(2)
+
+        def setup(self):
+            pass
+
+        def split_counts(self):
+            return {
+                "train": {"neg": 1, "pos": 1},
+                "val": {"neg": 1, "pos": 1},
+                "test": {"neg": 1, "pos": 1},
+            }
+
+        def train_batches(self, **kwargs):
+            def generator():
+                yield jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32)
+
+            return generator()
+
+        def val_batches(self, **kwargs):
+            return [(jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32))]
+
+        def test_batches(self, **kwargs):
+            return [(jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32))]
+
+    monkeypatch.setattr(train, "EmotionDataModule", MinimalDataModule)
+
+    class FakeResNet:
+        config = SimpleNamespace(num_classes=2)
+
+        def replace(self, **kwargs):
+            return self
+
+    monkeypatch.setattr(train, "create_resnet", lambda **kwargs: FakeResNet())
+
+    monkeypatch.setattr(
+        train,
+        "create_train_state",
+        lambda *args, **kwargs: _make_train_state(),
+    )
+
+    step_counter = {"count": 0}
+
+    def stub_train_step(state, batch, rng):
+        """Mutate params each step so checkpoints capture distinct payloads."""
+        step_counter["count"] += 1
+        new_state = state.replace(
+            params={"w": jnp.array(step_counter["count"], dtype=jnp.float32)}
+        )
+        return new_state, {
+            "loss": jnp.array(0.1, dtype=jnp.float32),
+            "accuracy": jnp.array(1.0, dtype=jnp.float32),
+        }
+
+    val_losses = [
+        jnp.array(0.1, dtype=jnp.float32),
+        jnp.array(0.3, dtype=jnp.float32),
+    ]
+
+    def stub_eval_step(state, batch):
+        """Emit deterministic validation metrics with degrading loss."""
+        loss = val_losses.pop(0)
+        return (
+            {"loss": loss, "accuracy": jnp.array(1.0, dtype=jnp.float32)},
+            jnp.zeros(batch[0].shape[0], dtype=jnp.int32),
+        )
+
+    restored_params: list[jnp.ndarray] = []
+
+    def stub_predict_batches(state, model_obj, batches, config_obj):
+        """Record params passed to prediction to confirm restore path."""
+        restored_params.append(state.params["w"])
+        return (
+            jnp.zeros((1,), dtype=jnp.int32),
+            jnp.zeros((1,), dtype=jnp.int32),
+        )
+
+    monkeypatch.setattr(
+        train, "build_train_step", lambda *args, **kwargs: stub_train_step
+    )
+    monkeypatch.setattr(
+        train, "build_eval_step", lambda *args, **kwargs: stub_eval_step
+    )
+    monkeypatch.setattr(train, "predict_batches", stub_predict_batches)
+
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=tmp_path, batch_size=1),
+        output_dir=tmp_path / "run",
+        num_epochs=2,
+        checkpoint_every=1,
+        patience=2,
+        log_every=1,
+    )
+
+    metrics = train_and_evaluate(config)
+    assert metrics["best_epoch"] == 1
+    assert metrics["best_checkpoint"] is not None
+    assert restored_params, "predict_batches was not invoked"
+    assert int(restored_params[0].item()) == 1
+
+
+def test_train_and_evaluate_handles_failed_best_restore(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Fallback gracefully when best-checkpoint restore fails."""
+
+    restore_calls = {"count": 0}
+
+    class FailingCheckpointer:
+        """Stub checkpointer that raises during restore."""
+
+        def save(self, path, payload, save_args=None, force=True):
+            Path(path).mkdir(parents=True, exist_ok=True)
+
+        def restore(self, path, item, restore_args=None):
+            restore_calls["count"] += 1
+            raise FileNotFoundError
+
+    monkeypatch.setattr(train.ocp, "PyTreeCheckpointer", FailingCheckpointer)
+
+    class RecordingWriter:
+        """Stub summary writer that ignores all writes."""
+
+        def __init__(self, log_dir):
+            self.log_dir = log_dir
+
+        def add_scalars(self, *args, **kwargs):
+            pass
+
+        def add_text(self, *args, **kwargs):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(train, "SummaryWriter", RecordingWriter)
+
+    class MinimalDataModule:
+        """Data module yielding single-batch splits."""
+
+        def __init__(self, config):
+            self.config = config
+            self.class_weights = jnp.ones(2)
+
+        def setup(self):
+            pass
+
+        def split_counts(self):
+            return {
+                "train": {"neg": 1, "pos": 1},
+                "val": {"neg": 1, "pos": 1},
+                "test": {"neg": 1, "pos": 1},
+            }
+
+        def train_batches(self, **kwargs):
+            def generator():
+                yield jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32)
+
+            return generator()
+
+        def val_batches(self, **kwargs):
+            return [(jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32))]
+
+        def test_batches(self, **kwargs):
+            return [(jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32))]
+
+    monkeypatch.setattr(train, "EmotionDataModule", MinimalDataModule)
+
+    class FakeResNet:
+        config = SimpleNamespace(num_classes=2)
+
+        def replace(self, **kwargs):
+            return self
+
+    monkeypatch.setattr(train, "create_resnet", lambda **kwargs: FakeResNet())
+    monkeypatch.setattr(
+        train,
+        "create_train_state",
+        lambda *args, **kwargs: _make_train_state(),
+    )
+
+    step_counter = {"count": 0}
+
+    def stub_train_step(state, batch, rng):
+        step_counter["count"] += 1
+        new_state = state.replace(
+            params={"w": jnp.array(step_counter["count"], dtype=jnp.float32)}
+        )
+        return new_state, {
+            "loss": jnp.array(0.1, dtype=jnp.float32),
+            "accuracy": jnp.array(1.0, dtype=jnp.float32),
+        }
+
+    val_losses = [
+        jnp.array(0.1, dtype=jnp.float32),
+        jnp.array(0.3, dtype=jnp.float32),
+    ]
+
+    def stub_eval_step(state, batch):
+        loss = val_losses.pop(0)
+        return (
+            {"loss": loss, "accuracy": jnp.array(1.0, dtype=jnp.float32)},
+            jnp.zeros(batch[0].shape[0], dtype=jnp.int32),
+        )
+
+    recorded_params: list[jnp.ndarray] = []
+
+    def stub_predict_batches(state, model_obj, batches, config_obj):
+        recorded_params.append(state.params["w"])
+        return (
+            jnp.zeros((1,), dtype=jnp.int32),
+            jnp.zeros((1,), dtype=jnp.int32),
+        )
+
+    monkeypatch.setattr(
+        train, "build_train_step", lambda *args, **kwargs: stub_train_step
+    )
+    monkeypatch.setattr(
+        train, "build_eval_step", lambda *args, **kwargs: stub_eval_step
+    )
+    monkeypatch.setattr(train, "predict_batches", stub_predict_batches)
+
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=tmp_path, batch_size=1),
+        output_dir=tmp_path / "run-fail",
+        num_epochs=2,
+        checkpoint_every=1,
+        patience=2,
+        log_every=1,
+    )
+
+    metrics = train_and_evaluate(config)
+    assert restore_calls["count"] == 1
+    assert recorded_params, "predict_batches was not invoked"
+    assert int(recorded_params[0].item()) == 2
+    assert metrics["best_checkpoint"] is not None
 
 
 def test_build_train_step_handles_extended_dynamic_scale(monkeypatch) -> None:

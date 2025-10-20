@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import math
 import random
 from datetime import datetime
 from pathlib import Path
@@ -29,7 +30,7 @@ JSONValue = Union[
     Sequence["JSONValue"],
 ]
 SummaryMetrics = Mapping[
-    str, Union[float, None, Mapping[str, Sequence[float]]]
+    str, Union[int, float, None, str, Mapping[str, Sequence[float]]]
 ]
 T = TypeVar("T")
 
@@ -367,11 +368,30 @@ def summarize(metrics: SummaryMetrics) -> str:
     """Create a human-readable summary of key metrics."""
 
     def _metric_value(
-        value: Union[float, None, Mapping[str, Sequence[float]]],
+        value: Union[int, float, None, str, Mapping[str, Sequence[float]]],
     ) -> float:
-        if isinstance(value, Mapping) or value is None:
+        if (
+            isinstance(value, Mapping)
+            or value is None
+            or isinstance(value, str)
+        ):
             return float("nan")
         return float(value)
+
+    def _maybe_format(
+        label: str,
+        value: Union[int, float, None, str, Mapping[str, Sequence[float]]],
+    ) -> Optional[str]:
+        if (
+            isinstance(value, Mapping)
+            or value is None
+            or isinstance(value, str)
+        ):
+            return None
+        numeric = float(value)
+        if math.isnan(numeric):
+            return None
+        return f"{label}: {numeric:.4f}"
 
     summary_lines = [
         f"Final train loss:     {_metric_value(metrics.get('train_loss')):.4f}",
@@ -379,9 +399,33 @@ def summarize(metrics: SummaryMetrics) -> str:
         f"Final val loss:       {_metric_value(metrics.get('val_loss')):.4f}",
         f"Final val accuracy:   {_metric_value(metrics.get('val_accuracy')):.4f}",
     ]
+    val_f1_line = _maybe_format("Final val F1", metrics.get("val_f1"))
+    if val_f1_line is not None:
+        summary_lines.append(val_f1_line)
+    val_macro_f1_line = _maybe_format(
+        "Final val macro F1", metrics.get("val_macro_f1")
+    )
+    if val_macro_f1_line is not None:
+        summary_lines.append(val_macro_f1_line)
     test_acc = metrics.get("test_accuracy")
     if test_acc is not None and not isinstance(test_acc, Mapping):
         summary_lines.append(f"Test accuracy:         {float(test_acc):.4f}")
+    test_f1_line = _maybe_format("Test F1", metrics.get("test_f1"))
+    if test_f1_line is not None:
+        summary_lines.append(test_f1_line)
+    test_macro_f1_line = _maybe_format(
+        "Test macro F1", metrics.get("test_macro_f1")
+    )
+    if test_macro_f1_line is not None:
+        summary_lines.append(test_macro_f1_line)
+    best_epoch = metrics.get("best_epoch")
+    if isinstance(best_epoch, (int, float)) and not math.isnan(
+        float(best_epoch)
+    ):
+        summary_lines.append(f"Best epoch:            {int(best_epoch)}")
+    best_ckpt = metrics.get("best_checkpoint")
+    if isinstance(best_ckpt, str) and best_ckpt:
+        summary_lines.append(f"Best checkpoint:       {best_ckpt}")
     return "\n".join(summary_lines)
 
 

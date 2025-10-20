@@ -270,6 +270,70 @@ def test_summarize_includes_test_accuracy() -> None:
     assert "Test accuracy" in summary
 
 
+def test_summarize_includes_f1_and_best_checkpoint() -> None:
+    """Test summarize prints F1 metrics and checkpoint information."""
+    metrics = {
+        "train_loss": 0.1,
+        "train_accuracy": 0.9,
+        "val_loss": 0.2,
+        "val_accuracy": 0.8,
+        "val_f1": 0.85,
+        "val_macro_f1": 0.83,
+        "test_accuracy": 0.9,
+        "test_f1": 0.88,
+        "test_macro_f1": 0.86,
+        "best_epoch": 3,
+        "best_checkpoint": "runs/checkpoints/epoch_0003",
+    }
+    summary = main.summarize(metrics)
+    assert "Final val F1" in summary
+    assert "Final val macro F1" in summary
+    assert "Test F1" in summary
+    assert "Best epoch" in summary
+    assert "Best checkpoint" in summary
+
+
+def test_summarize_ignores_nan_metrics() -> None:
+    """Test summarize skips F1 entries when metrics are NaN."""
+    nan_val = float("nan")
+    metrics = {
+        "train_loss": 0.1,
+        "train_accuracy": 0.9,
+        "val_loss": 0.2,
+        "val_accuracy": 0.8,
+        "val_f1": nan_val,
+        "val_macro_f1": nan_val,
+        "test_accuracy": 0.9,
+        "test_f1": nan_val,
+        "test_macro_f1": nan_val,
+    }
+    summary = main.summarize(metrics)
+    assert "Final val F1" not in summary
+    assert "Final val macro F1" not in summary
+    assert "Test F1" not in summary
+    assert "Test macro F1" not in summary
+
+
+def test_example_config_round_trip(tmp_path: Path) -> None:
+    """Ensure the example config file stays aligned with the schema."""
+    example_config = Path("configs/example.json")
+    payload = json.loads(example_config.read_text())
+    payload["data"]["data_dir"] = str(tmp_path)
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(payload))
+    args = SimpleNamespace(
+        config=config_path,
+        output_dir=None,
+        resume=None,
+        seed=None,
+        num_epochs=None,
+        experiment_name=None,
+    )
+    training_config = main.resolve_configs(args)
+    assert training_config.data.data_dir == tmp_path
+    assert training_config.num_epochs == payload["num_epochs"]
+
+
 def test_main_entrypoint_executes(
     monkeypatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

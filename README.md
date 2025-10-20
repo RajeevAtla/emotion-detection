@@ -68,6 +68,8 @@ Training outputs:
 - Checkpoints under `<output-dir>/<timestamp>/<experiment>/checkpoints/`.
 - TensorBoard logs under `<output-dir>/<timestamp>/<experiment>/tensorboard/`.
 - JSON summaries (`config_resolved.json`, `metrics.json`).
+- Metrics include validation/test accuracy, micro-F1, and macro-F1 plus
+  per-class F1 breakdown text in TensorBoard.
 
 ---
 

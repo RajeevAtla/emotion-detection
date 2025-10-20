@@ -42,7 +42,7 @@ EvalStepFn = Callable[
     ["TrainState", TrainBatch], Tuple[dict[str, jnp.ndarray], jnp.ndarray]
 ]
 TrainingHistory = dict[str, list[float]]
-TrainingSummary = dict[str, Union[float, None, TrainingHistory]]
+TrainingSummary = dict[str, Union[float, int, None, str, TrainingHistory]]
 
 
 @dataclass
@@ -313,6 +313,51 @@ def format_confusion_matrix(cm: np.ndarray, class_names: Iterable[str]) -> str:
         row_vals = [str(header[idx + 1])] + [str(int(val)) for val in row]
         lines.append(" | ".join(row_vals))
     return "\n".join(lines)
+
+
+def compute_f1_metrics(cm: np.ndarray) -> tuple[float, float, list[float]]:
+    """Compute micro and macro F1 along with per-class F1 scores.
+
+    Args:
+        cm: Confusion matrix where rows correspond to ground-truth labels.
+
+    Returns:
+        tuple[float, float, list[float]]: Micro F1, macro F1, per-class F1 list.
+    """
+    if cm.size == 0:
+        return float("nan"), float("nan"), []
+
+    num_classes = cm.shape[0]
+    per_class_scores = np.full(num_classes, np.nan, dtype=np.float32)
+    for idx in range(num_classes):
+        tp = float(cm[idx, idx])
+        fp = float(cm[:, idx].sum() - cm[idx, idx])
+        fn = float(cm[idx, :].sum() - cm[idx, idx])
+        if tp == 0.0 and fp == 0.0 and fn == 0.0:
+            continue
+        precision_den = tp + fp
+        recall_den = tp + fn
+        precision = tp / precision_den if precision_den > 0.0 else 0.0
+        recall = tp / recall_den if recall_den > 0.0 else 0.0
+        if precision + recall == 0.0:
+            per_class_scores[idx] = 0.0
+        else:
+            per_class_scores[idx] = (
+                2.0 * precision * recall / (precision + recall)
+            )
+
+    if np.all(np.isnan(per_class_scores)):
+        macro_f1 = float("nan")
+    else:
+        macro_f1 = float(np.nanmean(per_class_scores))
+
+    total = float(cm.sum())
+    if total <= 0.0:
+        micro_f1 = float("nan")
+    else:
+        micro_f1 = float(np.trace(cm) / total)
+
+    return micro_f1, macro_f1, per_class_scores.tolist()
 
 
 def build_train_step(
@@ -613,9 +658,13 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
         "train_accuracy": [],
         "val_loss": [],
         "val_accuracy": [],
+        "val_f1": [],
+        "val_macro_f1": [],
     }
 
     epochs_without_improvement = 0
+    best_checkpoint_dir: Optional[Path] = None
+    best_epoch: Optional[int] = None
     for epoch in range(1, config.num_epochs + 1):
         epoch_rng, rng = jax.random.split(rng)
         epoch_seed = int(jax.random.randint(epoch_rng, (), 0, 2**31 - 1))
@@ -675,6 +724,9 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
             epoch_val_loss = float("nan")
             epoch_val_acc = float("nan")
 
+        val_f1 = float("nan")
+        val_macro_f1 = float("nan")
+        per_class_f1: list[float] = []
         if val_preds_list:
             val_preds = jnp.concatenate(val_preds_list, axis=0)
             val_labels = jnp.concatenate(val_labels_list, axis=0)
@@ -683,12 +735,24 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
                 labels=val_labels,
                 num_classes=len(train_counts),
             )
+            val_f1, val_macro_f1, per_class_f1 = compute_f1_metrics(cm)
             class_names = list(train_counts.keys())
             writer.add_text(
                 "epoch/confusion_matrix",
                 format_confusion_matrix(cm, class_names),
                 global_step=epoch,
             )
+            per_class_line = ", ".join(
+                f"{name}: "
+                f"{'nan' if math.isnan(float(score)) else f'{float(score):.4f}'}"
+                for name, score in zip(class_names, per_class_f1)
+            )
+            if per_class_line:
+                writer.add_text(
+                    "epoch/val_per_class_f1",
+                    per_class_line,
+                    global_step=epoch,
+                )
 
         writer.add_scalars(
             "epoch",
@@ -697,6 +761,8 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
                 "train_accuracy": epoch_train_acc,
                 "val_loss": epoch_val_loss,
                 "val_accuracy": epoch_val_acc,
+                "val_f1": val_f1,
+                "val_macro_f1": val_macro_f1,
             },
             global_step=epoch,
         )
@@ -705,6 +771,8 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
         history["train_accuracy"].append(epoch_train_acc)
         history["val_loss"].append(epoch_val_loss)
         history["val_accuracy"].append(epoch_val_acc)
+        history["val_f1"].append(val_f1)
+        history["val_macro_f1"].append(val_macro_f1)
 
         improved = (
             not math.isnan(epoch_val_loss) and epoch_val_loss < best_val_loss
@@ -712,6 +780,10 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
         if improved:
             best_val_loss = epoch_val_loss
             epochs_without_improvement = 0
+            best_checkpoint_dir = (
+                config.output_dir / "checkpoints" / f"epoch_{epoch:04d}"
+            )
+            best_epoch = epoch
         else:
             epochs_without_improvement += 1
 
@@ -724,6 +796,36 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
         ):
             break
 
+    if best_checkpoint_dir is not None and best_checkpoint_dir.exists():
+        template = {
+            "params": state.params,
+            "batch_stats": state.batch_stats,
+            "opt_state": state.opt_state,
+            "dynamic_scale": state.dynamic_scale,
+        }
+        restore_args = ocp.args.PyTreeRestore(item=template)
+        checkpointer = ocp.PyTreeCheckpointer()
+        try:
+            restored_best = checkpointer.restore(
+                str(best_checkpoint_dir),
+                item=template,
+                restore_args=restore_args,
+            )
+        except (FileNotFoundError, ValueError):
+            restored_best = None
+        if restored_best is not None:
+            restored_mapping = cast(Mapping[str, ArrayTree], restored_best)
+            state = state.replace(
+                params=restored_mapping["params"],
+                batch_stats=restored_mapping.get(
+                    "batch_stats", state.batch_stats
+                ),
+                opt_state=restored_mapping.get("opt_state", state.opt_state),
+                dynamic_scale=restored_mapping.get(
+                    "dynamic_scale", state.dynamic_scale
+                ),
+            )
+
     test_predictions, test_labels = predict_batches(
         state,
         model,
@@ -731,12 +833,22 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
         config,
     )
     test_accuracy = None
+    test_f1: Optional[float] = None
+    test_macro_f1: Optional[float] = None
     if test_predictions.size > 0:
         test_metric = mx.Accuracy.from_model_output(
             predictions=test_predictions,
             labels=test_labels,
         )
         test_accuracy = float(test_metric.compute())
+        test_cm = compute_confusion_matrix(
+            preds=test_predictions,
+            labels=test_labels,
+            num_classes=len(train_counts),
+        )
+        micro, macro, _ = compute_f1_metrics(test_cm)
+        test_f1 = micro
+        test_macro_f1 = macro
 
     writer.close()
     return {
@@ -744,6 +856,14 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
         "train_accuracy": history["train_accuracy"][-1],
         "val_loss": history["val_loss"][-1],
         "val_accuracy": history["val_accuracy"][-1],
+        "val_f1": history["val_f1"][-1],
+        "val_macro_f1": history["val_macro_f1"][-1],
         "test_accuracy": test_accuracy,
+        "test_f1": test_f1,
+        "test_macro_f1": test_macro_f1,
+        "best_checkpoint": str(best_checkpoint_dir)
+        if best_checkpoint_dir is not None
+        else None,
+        "best_epoch": best_epoch if best_epoch is not None else None,
         "history": history,
     }
