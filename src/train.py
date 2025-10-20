@@ -420,7 +420,8 @@ def save_checkpoint(state: TrainState, config: TrainingConfig, epoch: int) -> No
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     checkpointer = ocp.PyTreeCheckpointer()
     target_path = ckpt_dir / f"epoch_{epoch:04d}"
-    checkpointer.save(str(target_path), payload, force=True)
+    save_args = ocp.args.PyTreeSave(payload)
+    checkpointer.save(str(target_path), payload, save_args=save_args, force=True)
 
     existing = sorted(ckpt_dir.glob("epoch_*"))
     excess = len(existing) - config.max_checkpoints
@@ -429,11 +430,12 @@ def save_checkpoint(state: TrainState, config: TrainingConfig, epoch: int) -> No
             shutil.rmtree(path, ignore_errors=True)
 
 
-def maybe_restore_checkpoint(config: TrainingConfig) -> Optional[Dict[str, Any]]:
+def maybe_restore_checkpoint(config: TrainingConfig, state: TrainState) -> Optional[Dict[str, Any]]:
     """Restore a checkpoint if ``resume_checkpoint`` is specified.
 
     Args:
         config: Training configuration referencing an optional checkpoint.
+        state: Current training state providing structure for restoration.
 
     Returns:
         Optional[Dict[str, Any]]: Restored checkpoint payload or ``None``.
@@ -441,7 +443,14 @@ def maybe_restore_checkpoint(config: TrainingConfig) -> Optional[Dict[str, Any]]
     if config.resume_checkpoint is None:
         return None
     checkpointer = ocp.PyTreeCheckpointer()
-    return checkpointer.restore(str(config.resume_checkpoint))
+    template = {
+        "params": state.params,
+        "batch_stats": state.batch_stats,
+        "opt_state": state.opt_state,
+        "dynamic_scale": state.dynamic_scale,
+    }
+    restore_args = ocp.args.PyTreeRestore(item=template)
+    return checkpointer.restore(str(config.resume_checkpoint), item=template, restore_args=restore_args)
 
 
 def predict_batches(
@@ -508,7 +517,7 @@ def train_and_evaluate(config: TrainingConfig) -> Dict[str, Any]:
     model = model.replace(dropout_rate=config.dropout_rate)  # type: ignore[arg-type]
 
     state = create_train_state(rng, model, config, train_schedule)
-    restored_state = maybe_restore_checkpoint(config)
+    restored_state = maybe_restore_checkpoint(config, state)
     if restored_state is not None:
         state = state.replace(
             params=restored_state["params"],

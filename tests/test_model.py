@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+import warnings
 
 import jax
 from jax import tree_util
@@ -11,6 +12,16 @@ import jax.numpy as jnp
 import numpy as np
 import orbax.checkpoint as ocp
 import pytest
+warnings.filterwarnings(
+    "ignore",
+    message="Sharding info not provided when restoring",
+    category=UserWarning,
+)
+
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:Sharding info not provided when restoring:UserWarning"
+)
+
 from flax.core import unfreeze
 
 from src import model
@@ -72,7 +83,9 @@ def test_maybe_load_pretrained_params_roundtrip(tmp_path: Path) -> None:
     params = resnet.init(jax.random.PRNGKey(3), jnp.ones((1, 48, 48, 1)), train=False)["params"]
 
     checkpoint_path = tmp_path / "resnet_ckpt"
-    ocp.PyTreeCheckpointer().save(str(checkpoint_path), params, force=True)
+    checkpointer = ocp.PyTreeCheckpointer()
+    save_args = ocp.args.PyTreeSave(params)
+    checkpointer.save(str(checkpoint_path), params, save_args=save_args, force=True)
 
     restored = model.maybe_load_pretrained_params(
         params,
@@ -195,7 +208,7 @@ def test_build_finetune_mask_with_container() -> None:
 def test_maybe_load_pretrained_params_freezes_restored(monkeypatch) -> None:
     """Test checkpoint restoration with mocked checkpointer behavior."""
     class DummyCheckpointer:
-        def restore(self, path: str, item):
+        def restore(self, path: str, item, restore_args=None):
             return {"params": {"w": np.array([1.0])}}
 
     monkeypatch.setattr(model.ocp, "PyTreeCheckpointer", lambda: DummyCheckpointer())

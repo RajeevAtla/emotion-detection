@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import math
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, cast
@@ -12,6 +13,16 @@ import jax
 import jax.numpy as jnp
 import optax
 import pytest
+warnings.filterwarnings(
+    "ignore",
+    message="Sharding info not provided when restoring",
+    category=UserWarning,
+)
+
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:Sharding info not provided when restoring:UserWarning"
+)
+
 from flax.core import freeze
 from flax.training.dynamic_scale import DynamicScale
 
@@ -218,7 +229,10 @@ def test_checkpoint_save_and_restore(tmp_path: Path) -> None:
     save_checkpoint(state, config, epoch=2)
     save_checkpoint(state, config, epoch=3)
     assert not (config.output_dir / "checkpoints" / "epoch_0001").exists()
-    restored = maybe_restore_checkpoint(replace(config, resume_checkpoint=config.output_dir / "checkpoints" / "epoch_0003"))
+    restored = maybe_restore_checkpoint(
+        replace(config, resume_checkpoint=config.output_dir / "checkpoints" / "epoch_0003"),
+        state,
+    )
     assert restored is not None
 
 
@@ -472,7 +486,7 @@ def test_train_and_evaluate_handles_restore_and_empty_metrics(monkeypatch, tmp_p
     monkeypatch.setattr(
         train,
         "maybe_restore_checkpoint",
-        lambda config: {
+        lambda config, state: {
             "params": {"w": jnp.array(0.0)},
             "batch_stats": freeze({}),
             "opt_state": None,

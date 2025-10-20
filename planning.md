@@ -104,7 +104,7 @@ Further Improvements
 Orbax Warning Mitigation
 ------------------------
 
-- [ ] Investigate Orbax warning root causes and document behavior across TPU/GPU topologies.
-- [ ] Update checkpoint save/restore utilities to persist and reuse sharding metadata explicitly.
-- [ ] Add regression tests ensuring no warnings are emitted during checkpoint save/restore.
-- [ ] Coordinate with upstream Orbax releases or contribute fixes if local adjustments are insufficient.
+- [x] Investigate Orbax warning root causes and document behavior across TPU/GPU topologies.
+- [x] Update checkpoint save/restore utilities to persist and reuse sharding metadata explicitly.
+- [x] Add regression tests ensuring no warnings are emitted during checkpoint save/restore.
+- [x] Coordinate with upstream Orbax releases or contribute fixes if local adjustments are insufficient.

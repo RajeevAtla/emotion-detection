@@ -490,7 +490,8 @@ def maybe_load_pretrained_params(
 
     checkpointer = ocp.PyTreeCheckpointer()
     target = unfreeze(params) if isinstance(params, FrozenDict) else params
-    restored = checkpointer.restore(str(config.checkpoint_path), item=target)
+    restore_args = ocp.args.PyTreeRestore(item=target)
+    restored = checkpointer.restore(str(config.checkpoint_path), item=target, restore_args=restore_args)
     if isinstance(restored, FrozenDict):
         return restored  # pragma: no cover
     return freeze(restored)  # pragma: no cover
