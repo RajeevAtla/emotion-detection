@@ -108,24 +108,5 @@ The GitHub Actions workflow performs:
 3. `uv tool run ty check src`
 4. `uv run pytest --cov=src`
 
----
-
-## Roadmap Snapshot
-See `planning.md` for detailed history and future improvements. Highlights:
-- Docstring and lint compliance (complete).
-- Full coverage regression tests (complete).
-- Orbax checkpoint warning mitigation (complete).
-- Future: experiment dashboards, dataset versioning, inference-focused distillation.
-
----
-
-## Contributing
-1. Fork and branch: `git checkout -b feature/your-change`.
-2. Sync dependencies: `uv sync`.
-3. Run formatters/tests: `uv tool run ruff format`, linters, ty, pytest.
-4. Open a PR referencing related planning tasks/issues.
-
----
-
 ## License
 MIT — see [LICENSE](LICENSE).
