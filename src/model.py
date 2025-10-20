@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Dict, Optional, Tuple, Type
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple, Type
 
 import jax.numpy as jnp
 from flax import linen as nn
+from flax import traverse_util
+from flax.core import FrozenDict, freeze, unfreeze
+import orbax.checkpoint as ocp
 
 ModuleDef = Type[nn.Module]
 
@@ -22,6 +26,10 @@ class ResNetConfig:
     width_multiplier: int = 1
     input_channels: int = 1
     input_projection_channels: Optional[int] = None
+    checkpoint_path: Optional[Path] = None
+    frozen_stages: Tuple[int, ...] = ()
+    freeze_stem: bool = False
+    freeze_classifier: bool = False
 
 
 def resnet_config(depth: int, **overrides: object) -> ResNetConfig:
@@ -288,6 +296,10 @@ def create_resnet(
     width_multiplier: int = 1,
     include_top: bool = True,
     input_projection_channels: Optional[int] = None,
+    checkpoint_path: Optional[Path] = None,
+    frozen_stages: Tuple[int, ...] = (),
+    freeze_stem: bool = False,
+    freeze_classifier: bool = False,
 ) -> ResNet:
     """Factory returning a configured ResNet model."""
     blocks_per_stage = {
@@ -307,5 +319,71 @@ def create_resnet(
         width_multiplier=width_multiplier,
         input_channels=input_channels,
         input_projection_channels=input_projection_channels,
+        checkpoint_path=checkpoint_path,
+        frozen_stages=frozen_stages,
+        freeze_stem=freeze_stem,
+        freeze_classifier=freeze_classifier,
     )
     return ResNet(config=config, include_top=include_top)
+
+
+def build_finetune_mask(
+    params: FrozenDict[str, Any] | Dict[str, Any],
+    *,
+    config: ResNetConfig,
+    freeze_classifier: Optional[bool] = None,
+) -> FrozenDict[str, Any]:
+    """Return a boolean mask marking which parameters remain trainable."""
+    if freeze_classifier is None:
+        freeze_classifier = config.freeze_classifier
+
+    has_params_container = isinstance(params, (dict, FrozenDict)) and "params" in params
+    target_tree = params["params"] if has_params_container else params
+    if isinstance(target_tree, FrozenDict):
+        target_tree_unfrozen = unfreeze(target_tree)
+    else:
+        target_tree_unfrozen = target_tree
+
+    flat = traverse_util.flatten_dict(target_tree_unfrozen)
+
+    frozen_stages = {f"stage{stage}_" for stage in config.frozen_stages}
+    mask_flat: Dict[Tuple[str, ...], bool] = {}
+    for path, value in flat.items():
+        top_level = path[0] if isinstance(path, tuple) and path else path
+        trainable = True
+
+        if config.freeze_stem and (
+            isinstance(top_level, str) and (top_level.startswith("stem_") or top_level == "input_projection")
+        ):
+            trainable = False
+
+        if isinstance(top_level, str) and any(top_level.startswith(prefix) for prefix in frozen_stages):
+            trainable = False
+
+        if freeze_classifier and isinstance(top_level, str) and top_level.startswith("classifier"):
+            trainable = False
+
+        mask_flat[path] = trainable
+
+    mask_tree = traverse_util.unflatten_dict(mask_flat)
+    mask_tree = freeze(mask_tree)
+    if has_params_container:
+        return freeze({"params": mask_tree})  # type: ignore[return-value]
+    return mask_tree  # type: ignore[return-value]
+
+
+def maybe_load_pretrained_params(
+    params: FrozenDict[str, Any],
+    *,
+    config: ResNetConfig,
+) -> FrozenDict[str, Any]:
+    """Load parameters from a checkpoint when configured."""
+    if config.checkpoint_path is None:
+        return params
+
+    checkpointer = ocp.PyTreeCheckpointer()
+    target = unfreeze(params) if isinstance(params, FrozenDict) else params
+    restored = checkpointer.restore(str(config.checkpoint_path), item=target)
+    if isinstance(restored, FrozenDict):
+        return restored
+    return freeze(restored)
