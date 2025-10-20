@@ -24,6 +24,13 @@ from src.data import (
     normalize_image,
 )
 from src.model import build_finetune_mask, create_resnet, maybe_load_pretrained_params
+from src.train import (
+    TrainingConfig,
+    build_train_step,
+    compute_confusion_matrix,
+    create_learning_rate_schedule,
+    create_train_state,
+)
 
 
 class TrainingConfigSchema(BaseModel):
@@ -168,3 +175,37 @@ def test_maybe_load_pretrained_params_roundtrip(tmp_path: Path) -> None:
         variables, config=replace(model.config, checkpoint_path=ckpt_dir)
     )
     chex.assert_trees_all_close(restored, freeze(variables))
+
+
+def test_compute_confusion_matrix_counts() -> None:
+    preds = jnp.array([0, 1, 1, 2, 2])
+    labels = jnp.array([0, 1, 2, 2, 1])
+    cm = compute_confusion_matrix(preds, labels, num_classes=3)
+    assert cm.shape == (3, 3)
+    assert cm[0, 0] == 1
+    assert cm[1, 1] == 1
+    assert cm[2, 2] == 1
+    assert cm[1, 1] + cm[1, 2] == 2
+
+
+def test_train_step_gradients_finite(tmp_path: Path) -> None:
+    data_cfg = DataModuleConfig(data_dir=Path("data"), batch_size=2, val_ratio=0.1, seed=0)
+    train_cfg = TrainingConfig(
+        data=data_cfg,
+        output_dir=tmp_path / "runs",
+        num_epochs=1,
+        batch_size=2,
+        log_every=10,
+    )
+    model = create_resnet(depth=18, num_classes=len(CLASS_NAMES))
+    schedule = create_learning_rate_schedule(train_cfg, steps_per_epoch=1)
+    state = create_train_state(jax.random.PRNGKey(0), model, train_cfg, schedule)
+    train_step = build_train_step(model, train_cfg, class_weights=None)
+
+    images = jnp.ones((train_cfg.batch_size, 48, 48, 1), dtype=jnp.float32)
+    labels = jnp.zeros((train_cfg.batch_size,), dtype=jnp.int32)
+    new_state, metrics = train_step(state, (images, labels), jax.random.PRNGKey(1))
+
+    chex.assert_tree_all_equal_structs(state.params, new_state.params)
+    chex.assert_tree_all_finite(new_state.params)
+    assert jnp.isfinite(metrics["loss"])
