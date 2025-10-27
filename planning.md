@@ -104,6 +104,7 @@ GitHub Actions CI
 - [x] Extend the smoke GitHub Action to validate run artifacts (e.g., assert `metrics.json` exists and contains non-NaN values) so silent failures are caught automatically.
 - [x] Update developer onboarding docs/README to call out the pinned Python `3.13.*` requirement introduced in `pyproject.toml`.
 - [x] Stage smoke workflow datasets under the runner temp directory and use an ephemeral config to avoid overwriting tracked `data/`.
+- [x] Document smoke workflow data staging and local reproduction guidance in the README.
 -----------------------------
 
 1. **Chex Test Coverage Refresh (complete)** — Chex assertions now live across the data/model/training test suite (`tests/test_data.py`, `tests/test_model.py`, `tests/test_train.py`).

@@ -93,6 +93,17 @@ For a quick local run you can also invoke the convenience harness:
 uv run python scripts/run_tests.py --cov
 ```
 
+### Smoke CI Workflow
+
+The GitHub smoke workflow stages a synthetic FER dataset inside the runner's temporary directory before kicking off a one-epoch training run. To reproduce that behaviour locally without affecting your real FER dataset:
+
+1. Create a temporary directory outside this repository (e.g. `RUNNER_TEMP=$(mktemp -d)`).
+2. Copy `configs/smoke.json` to that directory and update `data.data_dir` so it points to the temp folder.
+3. Populate the temp folder with a handful of small grayscale images for each class (even one or two per class is sufficient).
+4. Run `uv run python -m src.main --config <temp>/smoke.json --output-dir runs --seed 0 --experiment-name smoke-local`.
+
+Keeping the synthetic data outside the tracked `data/` tree mirrors the CI setup and keeps your production dataset safe.
+
 Ruff enforces a 79-character max line length.
 Run `uv tool run ruff format` before committing to keep the repo consistent.
 
