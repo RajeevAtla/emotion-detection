@@ -68,7 +68,7 @@ Emotion Detection ResNet Plan
 - [x] Create Chex-assisted training step assertions (loss finite, gradients not NaN/Inf, optimizer state structure) — Chex-backed assertions added to the training step suite.
 - [x] Validate evaluation metrics integration by comparing MetraX outputs against handcrafted samples — see `tests/test_train.py::test_eval_step_accuracy_matches_manual`.
 - [x] Provide CLI entry or pytest-style harness (e.g., `uv run pytest src/tests.py`) to run targeted JIT-safe tests without side effects — `scripts/run_tests.py` plus README instructions cover the real `tests/` package.
-- [x] Testing notes - current pytest suite (`uv run python -m pytest src/tests.py`) covers data loaders, augmentation determinism, ResNet forward shapes, finetuning masks, checkpoint round-trips, confusion-matrix utilities, and training-step gradient sanity checks.
+- [ ] Testing notes - replace references to `src/tests.py` with the actual `tests/` package and ensure docs/automation use `uv run pytest` or `scripts/run_tests.py`.
 
 Next Test Enhancements
 ----------------------
@@ -117,7 +117,7 @@ GitHub Actions CI
 
 6. **Review & Close-Out (complete)** — Full lint/type/test suite executed (`uv run pytest` with 100% coverage) and plan updated.
 
-7. **Smoke Dataset Safety (follow-up)** — Future improvement: consider staging smoke data outside `data/` or documenting the destructive behavior for local runs.
+7. **Smoke Dataset Safety** — adjust the smoke workflow to stage synthetic data outside the tracked `data/` directory (or clean up after itself) and document the behavior for contributors.
 
 Immediate Implementation Tasks (2025-10-20)
 -------------------------------------------
