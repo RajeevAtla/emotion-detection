@@ -1,0 +1,65 @@
+name: Smoke Training
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  smoke-run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          activate-environment: "true"
+          enable-cache: "true"
+          restore-cache: "true"
+          save-cache: "true"
+          cache-python: "true"
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Prepare smoke dataset
+        run: |
+          uv run python - <<'PY'
+          import shutil
+          from pathlib import Path
+
+          import numpy as np
+          from PIL import Image
+
+          root = Path("data")
+          if root.exists():
+              shutil.rmtree(root)
+          classes = (
+              "angry",
+              "disgusted",
+              "fearful",
+              "happy",
+              "neutral",
+              "sad",
+              "surprised",
+          )
+          for split, count in (("train", 2), ("val", 1), ("test", 1)):
+              for cls_index, cls_name in enumerate(classes):
+                  split_dir = root / split / cls_name
+                  split_dir.mkdir(parents=True, exist_ok=True)
+                  for img_idx in range(count):
+                      value = int((cls_index + 1) * (img_idx + 1) * 16) % 256
+                      arr = np.full((48, 48), value, dtype=np.uint8)
+                      Image.fromarray(arr).save(split_dir / f"img{img_idx}.png")
+          PY
+
+      - name: Run smoke training config
+        run: |
+          uv run python -m src.main \
+            --config configs/smoke.json \
+            --output-dir runs \
+            --seed 0 \
+            --experiment-name gh-smoke
