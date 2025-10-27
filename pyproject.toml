@@ -3,7 +3,7 @@ name = "Emotion_Detection"
 version = "0.1.0"
 description = "Doing emotion detection based on labeled data and Pytorch"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = "==3.13.*"
 dependencies = [
     "chex>=0.1.91",
     "clu>=0.0.12",
@@ -30,4 +30,5 @@ dev = [
 ]
 
 [tool.ruff]
-line-length = 79
+line-length = 80
+output-format = "github"
