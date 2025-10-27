@@ -29,14 +29,15 @@ jobs:
         run: uv sync
 
       - name: Prepare smoke dataset
+        id: prepare-smoke
         run: |
           uv run python - <<'PY'
           from pathlib import Path
+          import json
+          import os
 
           import numpy as np
           from PIL import Image
-
-          import shutil
 
           classes = (
               "angry",
@@ -47,24 +48,37 @@ jobs:
               "sad",
               "surprised",
           )
-          root = Path("data")
-          if root.exists():
-              shutil.rmtree(root)
-          root.mkdir(exist_ok=True)
+
+          runner_temp = Path(os.environ.get("RUNNER_TEMP", "."))
+          data_root = runner_temp / "smoke-data"
+          data_root.mkdir(parents=True, exist_ok=True)
+
           for split, count in (("train", 4), ("test", 2)):
               for idx, name in enumerate(classes):
-                  class_dir = root / split / name
+                  class_dir = data_root / split / name
                   class_dir.mkdir(parents=True, exist_ok=True)
                   for img_idx in range(count):
                       value = int(((idx + 1) * (img_idx + 1) * 37) % 255)
                       arr = np.full((48, 48), value, dtype=np.uint8)
                       Image.fromarray(arr).save(class_dir / f"img{img_idx}.png")
+
+          config_template = Path("configs/smoke.json")
+          config_payload = json.loads(config_template.read_text())
+          config_payload.setdefault("data", {})["data_dir"] = str(data_root)
+
+          config_path = runner_temp / "smoke_ci.json"
+          config_path.write_text(json.dumps(config_payload, indent=2))
+
+          github_output = Path(os.environ["GITHUB_OUTPUT"])
+          with github_output.open("a") as fh:
+              fh.write(f"config_path={config_path}\n")
+              fh.write(f"data_dir={data_root}\n")
           PY
 
       - name: Run smoke training config
         run: |
           uv run python -m src.main \
-            --config configs/smoke.json \
+            --config "${{ steps.prepare-smoke.outputs.config_path }}" \
             --output-dir runs \
             --seed 0 \
             --experiment-name gh-smoke
@@ -108,4 +122,5 @@ jobs:
           name: smoke-run-artifacts
           path: |
             runs
-            data
+            ${{ steps.prepare-smoke.outputs.config_path }}
+            ${{ steps.prepare-smoke.outputs.data_dir }}

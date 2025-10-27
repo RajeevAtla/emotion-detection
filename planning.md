@@ -68,7 +68,7 @@ Emotion Detection ResNet Plan
 - [x] Create Chex-assisted training step assertions (loss finite, gradients not NaN/Inf, optimizer state structure) — Chex-backed assertions added to the training step suite.
 - [x] Validate evaluation metrics integration by comparing MetraX outputs against handcrafted samples — see `tests/test_train.py::test_eval_step_accuracy_matches_manual`.
 - [x] Provide CLI entry or pytest-style harness (e.g., `uv run pytest src/tests.py`) to run targeted JIT-safe tests without side effects — `scripts/run_tests.py` plus README instructions cover the real `tests/` package.
-- [ ] Testing notes - replace references to `src/tests.py` with the actual `tests/` package and ensure docs/automation use `uv run pytest` or `scripts/run_tests.py`.
+- [x] Testing notes - README and scripts now reference the `tests/` package via `uv run pytest`/`scripts/run_tests.py`; planning updated accordingly.
 
 Next Test Enhancements
 ----------------------
@@ -103,6 +103,7 @@ GitHub Actions CI
 - [x] Run `uv run pytest --cov=src` to validate the suite and enforce coverage.
 - [x] Extend the smoke GitHub Action to validate run artifacts (e.g., assert `metrics.json` exists and contains non-NaN values) so silent failures are caught automatically.
 - [x] Update developer onboarding docs/README to call out the pinned Python `3.13.*` requirement introduced in `pyproject.toml`.
+- [x] Stage smoke workflow datasets under the runner temp directory and use an ephemeral config to avoid overwriting tracked `data/`.
 -----------------------------
 
 1. **Chex Test Coverage Refresh (complete)** — Chex assertions now live across the data/model/training test suite (`tests/test_data.py`, `tests/test_model.py`, `tests/test_train.py`).
@@ -117,7 +118,7 @@ GitHub Actions CI
 
 6. **Review & Close-Out (complete)** — Full lint/type/test suite executed (`uv run pytest` with 100% coverage) and plan updated.
 
-7. **Smoke Dataset Safety** — adjust the smoke workflow to stage synthetic data outside the tracked `data/` directory (or clean up after itself) and document the behavior for contributors.
+7. **Smoke Dataset Safety (complete)** — smoke workflow now stages synthetic data in a temporary directory with an ephemeral config; document any further refinements as needed.
 
 Immediate Implementation Tasks (2025-10-20)
 -------------------------------------------
