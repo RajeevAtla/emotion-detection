@@ -128,9 +128,7 @@ def test_residual_block_not_implemented() -> None:
     with pytest.raises(NotImplementedError):
         block.init(jax.random.PRNGKey(0), jnp.ones((1, 4, 4, 16)), train=True)
     with pytest.raises(NotImplementedError):
-        model.ResidualBlock.__call__(
-            block, jnp.ones((1, 4, 4, 16)), train=True
-        )
+        model.ResidualBlock.__call__(block, jnp.ones((1, 4, 4, 16)), train=True)
 
 
 def test_basic_block_requires_projection() -> None:

@@ -133,9 +133,7 @@ def test_augmentation_and_normalization() -> None:
         elastic_blur_sigma=0.2,
     )
     rng = np.random.default_rng(0)
-    base = np.linspace(0, 1, num=48 * 48, dtype=np.float32).reshape(
-        (48, 48, 1)
-    )
+    base = np.linspace(0, 1, num=48 * 48, dtype=np.float32).reshape((48, 48, 1))
     augmented = apply_augmentations(base, rng, config)
     chex.assert_shape(augmented, base.shape)
 
@@ -246,7 +244,9 @@ def test_augmentation_extreme_scale_keeps_bounds() -> None:
     assert np.max(augmented) <= 1.0
 
 
-def test_train_batches_without_augmentation_preserves_values(tmp_path: Path) -> None:
+def test_train_batches_without_augmentation_preserves_values(
+    tmp_path: Path,
+) -> None:
     """Test that disabling module-level augmentation leaves tensors unchanged."""
     dataset_root = tmp_path / "dataset"
     class_dir = dataset_root / "train" / CLASS_NAMES[0]

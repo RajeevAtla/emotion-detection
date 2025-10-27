@@ -346,6 +346,7 @@ def test_checkpoint_save_and_restore(tmp_path: Path) -> None:
     assert restored is not None
     assert not record
 
+
 def test_predict_batches_handles_empty_and_non_empty() -> None:
     """Test prediction helper behavior with empty and populated inputs."""
     config = TrainingConfig(
@@ -1014,4 +1015,3 @@ def test_build_train_step_handles_extended_dynamic_scale(monkeypatch) -> None:
         train_step(state, (images, labels), jax.random.PRNGKey(0))
     finally:
         jax.config.update("jax_disable_jit", False)
-

@@ -421,9 +421,7 @@ def build_train_step(
                 )
                 return loss, (metrics, new_model_state)
 
-            grad_fn = dynamic_scale.value_and_grad(
-                scaled_loss_fn, has_aux=True
-            )
+            grad_fn = dynamic_scale.value_and_grad(scaled_loss_fn, has_aux=True)
             result = grad_fn(state.params)
             if isinstance(result, tuple) and len(result) == 4:
                 (

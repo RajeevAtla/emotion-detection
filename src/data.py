@@ -703,8 +703,6 @@ def _rotate_image(image: np.ndarray, angle: float) -> np.ndarray:
     Returns:
         np.ndarray: Rotated image array.
     """
-    pil_img = Image.fromarray(
-        (np.clip(image, 0.0, 1.0) * 255).astype(np.uint8)
-    )
+    pil_img = Image.fromarray((np.clip(image, 0.0, 1.0) * 255).astype(np.uint8))
     rotated = pil_img.rotate(angle, resample=RESAMPLE_BILINEAR, fillcolor=0)
     return np.asarray(rotated, dtype=np.float32) / 255.0

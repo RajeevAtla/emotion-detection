@@ -485,8 +485,7 @@ def build_finetune_mask(
         if config.freeze_stem and (
             isinstance(top_level, str)
             and (
-                top_level.startswith("stem_")
-                or top_level == "input_projection"
+                top_level.startswith("stem_") or top_level == "input_projection"
             )
         ):
             trainable = False
