@@ -62,12 +62,12 @@ Emotion Detection ResNet Plan
 `src/tests.py` Subplan
 ------------------
 
-- [x] Design Pydantic schemas for experiment configuration, dataset metadata, and training hyperparameters — `TrainingConfigSchema` in `src/tests.py`.
+- [ ] Design Pydantic schemas for experiment configuration, dataset metadata, and training hyperparameters — schemas currently live in `src/main.py`; clarify testing location and add dedicated validation coverage.
 - [x] Implement Chex shape/dtype tests for data loaders, augmentations, and batching utilities — Chex coverage now in place for the data module tests.
 - [x] Add Chex module/property tests verifying ResNet block outputs, parameter trees, and initialization behavior — model tests now assert shapes/finitemess via Chex.
 - [x] Create Chex-assisted training step assertions (loss finite, gradients not NaN/Inf, optimizer state structure) — Chex-backed assertions added to the training step suite.
-- [x] Validate evaluation metrics integration by comparing MetraX outputs against handcrafted samples - `src/tests.py::test_metrax_accuracy_metric`.
-- [x] Provide CLI entry or pytest-style harness (e.g., `uv run pytest src/tests.py`) to run targeted JIT-safe tests without side effects - project now uses pytest via `uv run python -m pytest src/tests.py`.
+- [ ] Validate evaluation metrics integration by comparing MetraX outputs against handcrafted samples — add or document the actual pytest entry point covering this behavior.
+- [ ] Provide CLI entry or pytest-style harness (e.g., `uv run pytest src/tests.py`) to run targeted JIT-safe tests without side effects — ensure documentation and commands reference the actual `tests/` package.
 - [x] Testing notes - current pytest suite (`uv run python -m pytest src/tests.py`) covers data loaders, augmentation determinism, ResNet forward shapes, finetuning masks, checkpoint round-trips, confusion-matrix utilities, and training-step gradient sanity checks.
 
 Next Test Enhancements
@@ -132,6 +132,10 @@ GitHub Actions CI
 6. **Review & Close-Out**  
    a. Run full lint/type/test suite.  
    b. Update planning checklist boxes once each deliverable is verified.
+
+7. **Smoke Dataset Safety**  
+   a. Modify smoke workflow to stage synthetic data outside the tracked `data/` directory or use a temporary workspace so production datasets aren’t deleted locally.  
+   b. Document the smoke-data behavior in CONTRIBUTING/README to avoid accidental data loss.
 
 Immediate Implementation Tasks (2025-10-20)
 -------------------------------------------
