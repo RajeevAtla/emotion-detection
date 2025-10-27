@@ -62,12 +62,12 @@ Emotion Detection ResNet Plan
 `src/tests.py` Subplan
 ------------------
 
-- [ ] Design Pydantic schemas for experiment configuration, dataset metadata, and training hyperparameters — schemas currently live in `src/main.py`; clarify testing location and add dedicated validation coverage.
+- [x] Design Pydantic schemas for experiment configuration, dataset metadata, and training hyperparameters — schemas reside in `src/main.py` with explicit validation tests in `tests/test_main.py`.
 - [x] Implement Chex shape/dtype tests for data loaders, augmentations, and batching utilities — Chex coverage now in place for the data module tests.
 - [x] Add Chex module/property tests verifying ResNet block outputs, parameter trees, and initialization behavior — model tests now assert shapes/finitemess via Chex.
 - [x] Create Chex-assisted training step assertions (loss finite, gradients not NaN/Inf, optimizer state structure) — Chex-backed assertions added to the training step suite.
-- [ ] Validate evaluation metrics integration by comparing MetraX outputs against handcrafted samples — add or document the actual pytest entry point covering this behavior.
-- [ ] Provide CLI entry or pytest-style harness (e.g., `uv run pytest src/tests.py`) to run targeted JIT-safe tests without side effects — ensure documentation and commands reference the actual `tests/` package.
+- [x] Validate evaluation metrics integration by comparing MetraX outputs against handcrafted samples — see `tests/test_train.py::test_eval_step_accuracy_matches_manual`.
+- [x] Provide CLI entry or pytest-style harness (e.g., `uv run pytest src/tests.py`) to run targeted JIT-safe tests without side effects — `scripts/run_tests.py` plus README instructions cover the real `tests/` package.
 - [x] Testing notes - current pytest suite (`uv run python -m pytest src/tests.py`) covers data loaders, augmentation determinism, ResNet forward shapes, finetuning masks, checkpoint round-trips, confusion-matrix utilities, and training-step gradient sanity checks.
 
 Next Test Enhancements

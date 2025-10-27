@@ -88,6 +88,11 @@ uv tool run ty check src
 uv run pytest --cov=src
 ```
 
+For a quick local run you can also invoke the convenience harness:
+```bash
+uv run python scripts/run_tests.py --cov
+```
+
 Ruff enforces a 79-character max line length.
 Run `uv tool run ruff format` before committing to keep the repo consistent.
 

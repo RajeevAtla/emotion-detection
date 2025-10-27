@@ -287,6 +287,26 @@ def test_build_eval_step_returns_predictions() -> None:
     chex.assert_tree_all_finite(metrics)
 
 
+def test_eval_step_accuracy_matches_manual() -> None:
+    """Test MetraX accuracy aligns with manual computation."""
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=Path(".")), output_dir=Path("out")
+    )
+    eval_step = build_eval_step(cast(ResNet, DummyModel()), config)
+    state = _make_train_state()
+
+    images = jnp.stack(
+        [
+            jnp.ones((2, 2, 1), dtype=jnp.float32),
+            -jnp.ones((2, 2, 1), dtype=jnp.float32),
+        ]
+    )
+    labels = jnp.array([0, 1], dtype=jnp.int32)
+    metrics, preds = eval_step(state, (images, labels))
+    expected = (preds == labels).mean()
+    assert pytest.approx(float(expected)) == float(metrics["accuracy"])
+
+
 def test_confusion_matrix_helpers() -> None:
     """Test confusion matrix computation and formatting helpers."""
     preds = jnp.array([0, 1, 1])
@@ -994,5 +1014,4 @@ def test_build_train_step_handles_extended_dynamic_scale(monkeypatch) -> None:
         train_step(state, (images, labels), jax.random.PRNGKey(0))
     finally:
         jax.config.update("jax_disable_jit", False)
-
 

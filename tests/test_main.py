@@ -84,6 +84,32 @@ def test_runtime_training_model_accepts_valid_frozen_stages(
     assert model.frozen_stages == (1, 2)
 
 
+def test_runtime_data_model_validation(tmp_path: Path) -> None:
+    """Test that RuntimeDataModel coerces and validates numeric fields."""
+    payload = {
+        "data_dir": str(tmp_path),
+        "batch_size": 16,
+        "val_ratio": 0.2,
+        "seed": 123,
+    }
+    model = main.RuntimeDataModel.model_validate(payload)
+    assert model.batch_size == 16
+    assert model.val_ratio == 0.2
+    assert model.data_dir == tmp_path
+
+
+@pytest.mark.parametrize("bad_ratio", [-0.1, 1.2])
+def test_runtime_data_model_invalid_val_ratio(bad_ratio) -> None:
+    """Test invalid validation ratio values raise errors."""
+    payload = {
+        "data_dir": Path("."),
+        "batch_size": 8,
+        "val_ratio": bad_ratio,
+    }
+    with pytest.raises(ValidationError):
+        main.RuntimeDataModel.model_validate(payload)
+
+
 def test_build_dataclass_converts_paths(tmp_path: Path) -> None:
     """Test conversion to dataclasses including nested path fields."""
     payload = {
