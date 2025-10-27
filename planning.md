@@ -7,9 +7,9 @@ Emotion Detection ResNet Plan
 - [x] Decide on ResNet depth (e.g., ResNet-34) balancing dataset size and compute budget — target a CIFAR-style ResNet-34 (3,4,6,3 blocks) with 3x3 stride-1 stem and no initial maxpool to preserve 48x48 spatial detail; expose config switch to downgrade to ResNet-18 for ablations; first conv adapted to single-channel input with optional channel-expansion for transfer learning.
 - [x] Decide on JAX ecosystem tooling (Flax for modules and training config via `TrainState`, Optax for optimizers + schedulers, Orbax for checkpointing, MetraX for metrics, Chex for testing, Pydantic for config validation, TensorBoard summaries for experiment tracking, and `uv` for dependency management).
 - [x] Outline experiment tracking, checkpointing, and evaluation metrics (accuracy, F1, macro-F1, class confusion matrix) - use MetraX metric collections updated each epoch, log scalars/figures to TensorBoard and structured JSON; Orbax-managed checkpoints storing `TrainState` and config snapshots.
-- [x] Schedule implementation order across `src/data.py`, `src/model.py`, `src/train.py`, and `src/main.py` - Phase 1: implement `data.py` loaders/augmentations + associated Chex tests; Phase 2: build `model.py` ResNet modules with config options; Phase 3: wire `train.py` loops (optimizer, metrics, checkpoints); Phase 4: finalize `main.py` orchestration + CLI; Phase 5: harden `src/tests.py` and integration smoke tests.
+- [x] Schedule implementation order across `src/data.py`, `src/model.py`, `src/train.py`, and `src/main.py` - Phase 1: implement `data.py` loaders/augmentations + associated Chex tests; Phase 2: build `model.py` ResNet modules with config options; Phase 3: wire `train.py` loops (optimizer, metrics, checkpoints); Phase 4: finalize `main.py` orchestration + CLI; Phase 5: harden `tests/` and integration smoke tests.
 - [x] Outline Chex-based invariants/tests for data, model, and training loops to validate shapes and dtypes — Chex assertions now cover data/model/training paths in `tests/test_data.py`, `tests/test_model.py`, and `tests/test_train.py`.
-- [x] Define scope for unified `src/tests.py` covering Chex property tests and Pydantic schema validation — retained the `tests/` package layout and documented the Chex-backed coverage approach.
+- [x] Define scope for unified `tests/` covering Chex property tests and Pydantic schema validation — retained the `tests/` package layout and documented the Chex-backed coverage approach.
 - [x] Confirm PyPI package name/source for MetraX metrics library (current `uv add metrax` fails; need guidance before wiring metrics integration). — Installed as `google-metrax`; added `clu` dependency per package requirements.
 
 `src/data.py` Subplan
@@ -59,7 +59,7 @@ Emotion Detection ResNet Plan
 - [x] Ensure runtime configuration validated via Pydantic models - `src/main.py` now validates JSON/CLI payloads through `RuntimeTrainingModel`/`RuntimeDataModel` before dataclass construction.
 - [x] Persist config/metrics artifacts (JSON + TensorBoard) per run directory for reproducibility - resolved config and metric history written to `<run>/config_resolved.json` and `<run>/metrics.json`.
 
-`src/tests.py` Subplan
+`tests/` Subplan
 ------------------
 
 - [x] Design Pydantic schemas for experiment configuration, dataset metadata, and training hyperparameters — schemas reside in `src/main.py` with explicit validation tests in `tests/test_main.py`.
@@ -67,7 +67,7 @@ Emotion Detection ResNet Plan
 - [x] Add Chex module/property tests verifying ResNet block outputs, parameter trees, and initialization behavior — model tests now assert shapes/finitemess via Chex.
 - [x] Create Chex-assisted training step assertions (loss finite, gradients not NaN/Inf, optimizer state structure) — Chex-backed assertions added to the training step suite.
 - [x] Validate evaluation metrics integration by comparing MetraX outputs against handcrafted samples — see `tests/test_train.py::test_eval_step_accuracy_matches_manual`.
-- [x] Provide CLI entry or pytest-style harness (e.g., `uv run pytest src/tests.py`) to run targeted JIT-safe tests without side effects — `scripts/run_tests.py` plus README instructions cover the real `tests/` package.
+- [x] Provide CLI entry or pytest-style harness (e.g., `uv run pytest tests/`) to run targeted JIT-safe tests without side effects — `scripts/run_tests.py` plus README instructions cover the real `tests/` package.
 - [x] Testing notes - README and scripts now reference the `tests/` package via `uv run pytest`/`scripts/run_tests.py`; planning updated accordingly.
 
 Next Test Enhancements
@@ -152,4 +152,5 @@ Orbax Warning Mitigation
 - [x] Update checkpoint save/restore utilities to persist and reuse sharding metadata explicitly.
 - [x] Add regression tests ensuring no warnings are emitted during checkpoint save/restore — tests now verify warning lists stay empty while Orbax warnings are suppressed in `src/train.py`.
 - [x] Coordinate with upstream Orbax releases or contribute fixes if local adjustments are insufficient.
+
 
