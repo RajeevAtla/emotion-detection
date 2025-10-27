@@ -105,37 +105,19 @@ GitHub Actions CI
 - [x] Update developer onboarding docs/README to call out the pinned Python `3.13.*` requirement introduced in `pyproject.toml`.
 -----------------------------
 
-1. **Chex Test Coverage Refresh (tasks: lines 11, 12, 26, 37, 47, 66, 67, 68)**  
-   a. Introduce Chex to the test environment (add dependency, update imports).  
-   b. Refactor data pipeline tests to include `chex.assert_shape`, `assert_type`, and determinism checks.  
-   c. Add Chex assertions for model blocks (stem, residual stages, finetune masks).  
-   d. Enhance training-step tests with Chex tree/value validations (finite grads, optimizer structure).  
-   e. Revisit plan to decide whether unifying tests under `src/tests.py` or keeping `tests/` layout, then update checklist text accordingly.
+1. **Chex Test Coverage Refresh (complete)** — Chex assertions now live across the data/model/training test suite (`tests/test_data.py`, `tests/test_model.py`, `tests/test_train.py`).
 
-2. **Augmentation Edge-Case Regression Coverage (task: line 79)**  
-   a. Create targeted fixtures covering disabled augmentation, extreme scale ranges, and cached stats reuse.  
-   b. Add assertions ensuring augmentation outputs remain bounded and normalization skips/uses cached stats appropriately.
+2. **Augmentation Edge-Case Regression Coverage (complete)** — Disabled augmentation, extreme scale scenarios, and cached-stat reuse are exercised in `tests/test_data.py`.
 
-3. **Smoke Workflow Artifact Validation (task: line 104)**  
-   a. Extend `.github/workflows/smoke.yml` to synthesize dataset fixtures (if necessary).  
-   b. Add a post-run step that inspects `runs/**/metrics.json`, verifies presence of key metrics, and fails on NaN/missing values.  
-   c. Persist artifacts for debugging (upload on failure).
+3. **Smoke Workflow Artifact Validation (complete)** — `.github/workflows/smoke.yml` now seeds a synthetic dataset, validates `metrics.json`, and uploads artifacts on failure.
 
-4. **Documentation for Python Pin (task: line 105)**  
-   a. Update `README.md` (and any onboarding docs) to highlight the `==3.13.*` requirement and explain how to provision the interpreter with `uv`.  
-   b. Regenerate or adjust Quick Start instructions to align with the pin.
+4. **Documentation for Python Pin (complete)** — README prerequisites cover the 3.13 pin along with `uv python install 3.13` instructions.
 
-5. **Orbax Warning Regression Tests (task: line 137)**  
-   a. Author unit tests that exercise checkpoint save/restore without suppressing warnings.  
-   b. Ensure tests fail if the warning surfaces, proving the mitigation works.
+5. **Orbax Warning Regression Tests (complete)** — Checkpoint tests assert absence of warnings while runtime code filters the Orbax message.
 
-6. **Review & Close-Out**  
-   a. Run full lint/type/test suite.  
-   b. Update planning checklist boxes once each deliverable is verified.
+6. **Review & Close-Out (complete)** — Full lint/type/test suite executed (`uv run pytest` with 100% coverage) and plan updated.
 
-7. **Smoke Dataset Safety**  
-   a. Modify smoke workflow to stage synthetic data outside the tracked `data/` directory or use a temporary workspace so production datasets aren’t deleted locally.  
-   b. Document the smoke-data behavior in CONTRIBUTING/README to avoid accidental data loss.
+7. **Smoke Dataset Safety (follow-up)** — Future improvement: consider staging smoke data outside `data/` or documenting the destructive behavior for local runs.
 
 Immediate Implementation Tasks (2025-10-20)
 -------------------------------------------
