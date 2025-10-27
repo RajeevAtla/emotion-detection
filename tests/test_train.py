@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
+import chex
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -36,17 +37,6 @@ from src.train import (
     predict_batches,
     save_checkpoint,
     train_and_evaluate,
-)
-
-
-warnings.filterwarnings(
-    "ignore",
-    message="Sharding info not provided when restoring",
-    category=UserWarning,
-)
-
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:Sharding info not provided when restoring:UserWarning"
 )
 
 
@@ -177,6 +167,29 @@ class DummyModel:
         )
 
 
+def test_build_train_step_preserves_tree_structure_and_finiteness() -> None:
+    """Test that the train step keeps parameters finite and structured."""
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=Path(".")),
+        output_dir=Path("out"),
+        batch_size=1,
+    )
+    train_step = build_train_step(
+        cast(ResNet, DummyModel()),
+        config,
+        class_weights=jnp.ones(2, dtype=jnp.float32),
+    )
+    state = _make_train_state()
+    new_state, metrics = train_step(
+        state,
+        (jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32)),
+        jax.random.PRNGKey(0),
+    )
+    chex.assert_tree_all_finite(new_state.params)
+    chex.assert_trees_all_equal_structs(new_state.params, state.params)
+    chex.assert_tree_all_finite(metrics)
+
+
 def test_cross_entropy_loss_with_smoothing_and_weights() -> None:
     """Test label smoothing and per-class weighting inside the loss."""
     logits = jnp.array([[2.0, 0.5]])
@@ -270,7 +283,8 @@ def test_build_eval_step_returns_predictions() -> None:
         state, (jnp.ones((1, 2, 2, 1)), jnp.zeros((1,), dtype=jnp.int32))
     )
     assert "accuracy" in metrics
-    assert preds.shape == (1,)
+    chex.assert_shape(preds, (1,))
+    chex.assert_tree_all_finite(metrics)
 
 
 def test_confusion_matrix_helpers() -> None:
@@ -291,19 +305,26 @@ def test_checkpoint_save_and_restore(tmp_path: Path) -> None:
         max_checkpoints=2,
     )
     state = _make_train_state()
-    save_checkpoint(state, config, epoch=1)
-    save_checkpoint(state, config, epoch=2)
-    save_checkpoint(state, config, epoch=3)
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("error")
+        save_checkpoint(state, config, epoch=1)
+        save_checkpoint(state, config, epoch=2)
+        save_checkpoint(state, config, epoch=3)
+    assert not record
     assert not (config.output_dir / "checkpoints" / "epoch_0001").exists()
-    restored = maybe_restore_checkpoint(
-        replace(
-            config,
-            resume_checkpoint=config.output_dir / "checkpoints" / "epoch_0003",
-        ),
-        state,
-    )
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("error")
+        restored = maybe_restore_checkpoint(
+            replace(
+                config,
+                resume_checkpoint=config.output_dir
+                / "checkpoints"
+                / "epoch_0003",
+            ),
+            state,
+        )
     assert restored is not None
-
+    assert not record
 
 def test_predict_batches_handles_empty_and_non_empty() -> None:
     """Test prediction helper behavior with empty and populated inputs."""
@@ -323,7 +344,7 @@ def test_predict_batches_handles_empty_and_non_empty() -> None:
     preds, labels = predict_batches(
         state, cast(ResNet, DummyModel()), batches=batches, config=config
     )
-    assert preds.shape == labels.shape
+    chex.assert_shape(preds, labels.shape)
 
 
 def test_train_and_evaluate_with_stubs(monkeypatch, tmp_path: Path) -> None:
@@ -973,3 +994,5 @@ def test_build_train_step_handles_extended_dynamic_scale(monkeypatch) -> None:
         train_step(state, (images, labels), jax.random.PRNGKey(0))
     finally:
         jax.config.update("jax_disable_jit", False)
+
+

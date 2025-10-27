@@ -18,6 +18,10 @@ facial expression classification on the FER-style 48x48 grayscale dataset.
 
 ## Quick Start
 
+### Prerequisites
+- Python **3.13.x** (the project pins `pyproject.toml` to `==3.13.*`; install via `uv python install 3.13` or your preferred environment manager).
+- `uv` package manager ([installation guide](https://github.com/astral-sh/uv#installation)).
+
 ### 1. Clone & Enter
 ```bash
 git clone https://github.com/RajeevAtla/emotion-detection.git
@@ -27,6 +31,7 @@ cd emotion-detection
 ### 2. Install Dependencies (uv + venv)
 ```bash
 pip install uv
+uv python install 3.13
 uv sync
 ```
 
@@ -116,3 +121,5 @@ The GitHub Actions workflow performs:
 
 ## License
 MIT — see [LICENSE](LICENSE).
+
+

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import chex
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -19,6 +20,7 @@ from src.data import (
     compute_dataset_statistics,
     normalize_image,
     stratified_split,
+    _load_image,
     _scan_split,
 )
 
@@ -65,12 +67,15 @@ def test_emotion_data_module_end_to_end(tiny_dataset: Path) -> None:
     assert module.class_weights.shape == (len(CLASS_NAMES),)
 
     train_batch = next(module.train_batches(rng_seed=0))
-    assert train_batch[0].shape[1:] == (48, 48, 1)
+    chex.assert_shape(train_batch[0], (train_batch[0].shape[0], 48, 48, 1))
+    chex.assert_type(train_batch[0], jnp.float32)
 
     val_batch = next(module.val_batches(batch_size=3))
-    assert val_batch[0].dtype == jnp.float32
+    chex.assert_shape(val_batch[0], (val_batch[0].shape[0], 48, 48, 1))
+    chex.assert_type(val_batch[0], jnp.float32)
 
     test_batch = next(module.test_batches(batch_size=5))
+    chex.assert_shape(test_batch[0], (test_batch[0].shape[0], 48, 48, 1))
     assert test_batch[1].shape[0] <= 5
 
     dropped = list(module.train_batches(batch_size=5, drop_last=True))
@@ -92,6 +97,7 @@ def test_dataset_statistics_cache(tmp_path: Path, tiny_dataset: Path) -> None:
     )
     assert stats.mean == cached.mean
     assert stats.std == cached.std
+    assert cached.num_pixels > 0
 
 
 def test_stratified_split_edge_cases() -> None:
@@ -131,7 +137,7 @@ def test_augmentation_and_normalization() -> None:
         (48, 48, 1)
     )
     augmented = apply_augmentations(base, rng, config)
-    assert augmented.shape == base.shape
+    chex.assert_shape(augmented, base.shape)
 
     normalized = normalize_image(augmented, mean=0.5, std=0.25)
     assert np.isclose(
@@ -201,6 +207,69 @@ def test_iter_batches_empty_returns_no_batches(tmp_path: Path) -> None:
         )
     )
     assert batches == []
+
+
+def test_augmentation_disabled_is_noop(tmp_path: Path) -> None:
+    """Test that disabled augmentation leaves images untouched in batches."""
+    dataset_root = tmp_path / "dataset"
+    class_dir = dataset_root / "train" / CLASS_NAMES[0]
+    class_dir.mkdir(parents=True, exist_ok=True)
+    _write_image(class_dir / "img0.png", 32)
+    test_dir = dataset_root / "test" / CLASS_NAMES[0]
+    test_dir.mkdir(parents=True, exist_ok=True)
+    _write_image(test_dir / "img0.png", 32)
+
+    config = DataModuleConfig(
+        data_dir=dataset_root,
+        batch_size=1,
+        augment=True,
+        augmentation=AugmentationConfig(enabled=False),
+        mean=0.0,
+        std=1.0,
+    )
+    module = EmotionDataModule(config)
+    module.setup()
+    batch = next(module.train_batches(rng_seed=0))
+    original = _load_image(class_dir / "img0.png").astype(np.float32) / 255.0
+    chex.assert_shape(batch[0], (1, 48, 48, 1))
+    np.testing.assert_allclose(batch[0][0], original, atol=1e-6)
+
+
+def test_augmentation_extreme_scale_keeps_bounds() -> None:
+    """Test augmentation with extreme scales keeps shape and valid range."""
+    config = AugmentationConfig(scale_range=(0.5, 1.5))
+    rng = np.random.default_rng(321)
+    image = np.random.rand(48, 48, 1).astype(np.float32)
+    augmented = apply_augmentations(image, rng, config)
+    chex.assert_shape(augmented, (48, 48, 1))
+    assert np.min(augmented) >= 0.0
+    assert np.max(augmented) <= 1.0
+
+
+def test_train_batches_without_augmentation_preserves_values(tmp_path: Path) -> None:
+    """Test that disabling module-level augmentation leaves tensors unchanged."""
+    dataset_root = tmp_path / "dataset"
+    class_dir = dataset_root / "train" / CLASS_NAMES[0]
+    class_dir.mkdir(parents=True, exist_ok=True)
+    _write_image(class_dir / "img0.png", 64)
+    test_dir = dataset_root / "test" / CLASS_NAMES[0]
+    test_dir.mkdir(parents=True, exist_ok=True)
+    _write_image(test_dir / "img0.png", 64)
+
+    config = DataModuleConfig(
+        data_dir=dataset_root,
+        batch_size=1,
+        augment=False,
+        mean=0.0,
+        std=1.0,
+    )
+    module = EmotionDataModule(config)
+    module.setup(force_recompute_stats=True)
+    batch = next(module.train_batches(rng_seed=0))
+    original = _load_image(class_dir / "img0.png").astype(np.float32) / 255.0
+    chex.assert_shape(batch[0], (1, 48, 48, 1))
+    expected = normalize_image(original, module.config.mean, module.config.std)
+    np.testing.assert_allclose(batch[0][0], expected, atol=1e-6)
 
 
 def test_scan_split_missing_directory(tmp_path: Path) -> None:

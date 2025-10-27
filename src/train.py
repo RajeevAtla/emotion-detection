@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import shutil
+import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -565,9 +566,17 @@ def maybe_restore_checkpoint(
         "dynamic_scale": state.dynamic_scale,
     }
     restore_args = ocp.args.PyTreeRestore(item=template)
-    restored = checkpointer.restore(
-        str(config.resume_checkpoint), item=template, restore_args=restore_args
-    )
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="Sharding info not provided when restoring",
+            category=UserWarning,
+        )
+        restored = checkpointer.restore(
+            str(config.resume_checkpoint),
+            item=template,
+            restore_args=restore_args,
+        )
     return cast(Optional[dict[str, ArrayTree]], restored)
 
 
@@ -806,11 +815,17 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
         restore_args = ocp.args.PyTreeRestore(item=template)
         checkpointer = ocp.PyTreeCheckpointer()
         try:
-            restored_best = checkpointer.restore(
-                str(best_checkpoint_dir),
-                item=template,
-                restore_args=restore_args,
-            )
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="Sharding info not provided when restoring",
+                    category=UserWarning,
+                )
+                restored_best = checkpointer.restore(
+                    str(best_checkpoint_dir),
+                    item=template,
+                    restore_args=restore_args,
+                )
         except (FileNotFoundError, ValueError):
             restored_best = None
         if restored_best is not None:

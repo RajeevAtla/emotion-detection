@@ -6,6 +6,7 @@ import warnings
 from dataclasses import replace
 from pathlib import Path
 
+import chex
 import jax
 from jax import tree_util
 import jax.numpy as jnp
@@ -42,7 +43,8 @@ def test_basic_and_bottleneck_blocks() -> None:
     x = jnp.ones((1, 32, 32, 32))
     variables = basic.init(key, x, train=True)
     y, _ = basic.apply(variables, x, train=True, mutable=["batch_stats"])
-    assert y.shape[-1] == 32
+    chex.assert_shape(y, (1, 16, 16, 32))
+    chex.assert_tree_all_finite(variables["params"])
 
     bottleneck = model.BottleneckBlock(
         features=64, strides=(1, 1), use_projection=False
@@ -50,7 +52,8 @@ def test_basic_and_bottleneck_blocks() -> None:
     x = jnp.ones((1, 16, 16, 64))
     variables = bottleneck.init(key, x, train=True)
     y, _ = bottleneck.apply(variables, x, train=True, mutable=["batch_stats"])
-    assert y.shape[-1] == 64
+    chex.assert_shape(y, (1, 16, 16, 64))
+    chex.assert_tree_all_finite(variables["params"])
 
 
 def test_create_resnet_and_forward_features() -> None:
@@ -62,7 +65,7 @@ def test_create_resnet_and_forward_features() -> None:
     logits, features = resnet.apply(
         variables, jnp.ones((1, 48, 48, 1)), train=False, return_features=True
     )
-    assert features["stem"].ndim == 4
+    chex.assert_shape(features["stem"], (1, 48, 48, resnet.config.stem_width))
     assert "logits" not in features
 
 
