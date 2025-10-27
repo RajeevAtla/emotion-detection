@@ -95,14 +95,17 @@ uv run python scripts/run_tests.py --cov
 
 ### Smoke CI Workflow
 
-The GitHub smoke workflow stages a synthetic FER dataset inside the runner's temporary directory before kicking off a one-epoch training run. To reproduce that behaviour locally without affecting your real FER dataset:
+The GitHub smoke workflow stages a synthetic FER dataset inside the runner's temporary directory before kicking off a one-epoch training run.
 
-1. Create a temporary directory outside this repository (e.g. `RUNNER_TEMP=$(mktemp -d)`).
-2. Copy `configs/smoke.json` to that directory and update `data.data_dir` so it points to the temp folder.
-3. Populate the temp folder with a handful of small grayscale images for each class (even one or two per class is sufficient).
-4. Run `uv run python -m src.main --config <temp>/smoke.json --output-dir runs --seed 0 --experiment-name smoke-local`.
+**Important:** The workflow intentionally recreates its staging directory from scratch. Do **not** point it at your real FER dataset. When running the smoke scenario locally:
 
-Keeping the synthetic data outside the tracked `data/` tree mirrors the CI setup and keeps your production dataset safe.
+1. Place your production dataset outside this repository (or keep a separate backup).
+2. Create a scratch directory (for example `RUNNER_TEMP=$(mktemp -d)`).
+3. Copy `configs/smoke.json` into that scratch directory and edit `data.data_dir` to reference the scratch path.
+4. Populate the scratch directory with a handful of tiny grayscale images per class (one or two is enough).
+5. Execute `uv run python -m src.main --config <scratch>/smoke.json --output-dir runs --seed 0 --experiment-name smoke-local`.
+
+Following these steps mirrors the CI behaviour while ensuring the repository’s `data/` folder—and your real dataset—remain untouched.
 
 Ruff enforces a 79-character max line length.
 Run `uv tool run ruff format` before committing to keep the repo consistent.
