@@ -7,6 +7,7 @@ facial expression classification on the FER-style 48x48 grayscale dataset.
 ---
 
 ## Features
+
 - **JAX/Flax ResNet**: configurable CIFAR-style ResNet-18/34 backbones with fine-tuning support.
 - **Data Module**: deterministic preprocessing, augmentation, and stratified splitting.
 - **Training Loop**: Optax optimizers, mixed precision, checkpointing, early stopping, and TensorBoard logging.
@@ -19,16 +20,19 @@ facial expression classification on the FER-style 48x48 grayscale dataset.
 ## Quick Start
 
 ### Prerequisites
+
 - Python **3.13.x** (the project pins `pyproject.toml` to `==3.13.*`; install via `uv python install 3.13` or your preferred environment manager).
 - `uv` package manager ([installation guide](https://github.com/astral-sh/uv#installation)).
 
 ### 1. Clone & Enter
+
 ```bash
 git clone https://github.com/RajeevAtla/emotion-detection.git
 cd emotion-detection
 ```
 
 ### 2. Install Dependencies (uv + venv)
+
 ```bash
 pip install uv
 uv python install 3.13
@@ -36,7 +40,9 @@ uv sync
 ```
 
 ### 3. Prepare Dataset
+
 Place FER-style data under `data/` with the following structure:
+
 ```
 data/
   train/
@@ -50,11 +56,13 @@ data/
     sad/
     ...
 ```
+
 Images must be 48x48 grayscale PNGs. The train split is used to create an internal validation set.
 
 ---
 
 ## Running Training
+
 ```bash
 uv run python -m src.main \
   --config configs/example.json \
@@ -64,12 +72,14 @@ uv run python -m src.main \
 ```
 
 Key configuration options (via JSON or CLI overrides):
+
 - `data.data_dir`: path to dataset.
 - `model_depth`: `18` or `34`.
 - `num_epochs`, `batch_size`, `learning_rate`, `warmup_epochs`.
 - `use_mixed_precision`: enable float16 training on compatible accelerators.
 
 Training outputs:
+
 - Checkpoints under `<output-dir>/<timestamp>/<experiment>/checkpoints/`.
 - TensorBoard logs under `<output-dir>/<timestamp>/<experiment>/tensorboard/`.
 - JSON summaries (`config_resolved.json`, `metrics.json`).
@@ -81,6 +91,7 @@ Training outputs:
 ## Testing & Linting
 
 All automation uses uv:
+
 ```bash
 uv tool run ruff check
 uv tool run ruff format
@@ -89,6 +100,7 @@ uv run pytest --cov=src
 ```
 
 For a quick local run you can also invoke the convenience harness:
+
 ```bash
 uv run python scripts/run_tests.py --cov
 ```
@@ -115,6 +127,7 @@ These mirror the GitHub Actions workflow located in `.github/workflows/ci.yml`.
 ---
 
 ## Project Structure
+
 ```
 src/
   data.py      # Data loading/augmentation utilities
@@ -132,13 +145,14 @@ planning.md     # High-level roadmap & completed tasks
 ---
 
 ## CI Pipeline
+
 The GitHub Actions workflow performs:
+
 1. `uv sync --dev`
 2. `uv run ruff check`
 3. `uv run ty check src`
 4. `uv run pytest --cov=src`
 
 ## License
+
 MIT — see [LICENSE](LICENSE).
-
-
