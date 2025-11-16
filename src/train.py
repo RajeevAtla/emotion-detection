@@ -674,7 +674,7 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
         template = {
             "model": checkpointing.nnx_state(state.model),
             "opt_state": state.opt_state,
-            "rngs": nnx.state(state.rngs),
+            "rngs": checkpointing.nnx_state(state.rngs),
             "dynamic_scale": state.dynamic_scale,
         }
         restored_best = checkpointing.restore_payload(
