@@ -8,9 +8,9 @@ facial expression classification on the FER-style 48x48 grayscale dataset.
 
 ## Features
 
-- **JAX/Flax ResNet**: configurable CIFAR-style ResNet-18/34 backbones with fine-tuning support.
+- **JAX/Flax NNX ResNet**: configurable CIFAR-style ResNet-18/34 backbones with fine-tuning support. All modules now use Flax NNX state semantics (no Linen `apply_fn`), so you can control train/eval by calling `module.train()` / `module.eval()`.
 - **Data Module**: deterministic preprocessing, augmentation, and stratified splitting.
-- **Training Loop**: Optax optimizers, mixed precision, checkpointing, early stopping, and TensorBoard logging.
+- **Training Loop**: Fully NNX-native train/eval steps powered by Optax, mixed precision, checkpointing, early stopping, and TensorBoard logging.
 - **Checkpointing Helpers**: Orbax-based checkpoint saves with automatic pruning plus a shim that reverses stringified integer keys when resuming (workaround for google/orbax#2561 and aligned with the Flax NNX migration plan).
 - **Metrics**: Accuracy, F1, macro-F1, and confusion matrices via MetraX.
 - **Testing**: Extensive pytest/Chex coverage (unit + integration) with 100% statement coverage.
@@ -85,6 +85,9 @@ Key configuration options (via TOML or CLI overrides):
 - `model_depth`: `18` or `34`.
 - `num_epochs`, `batch_size`, `learning_rate`, `warmup_epochs`.
 - `use_mixed_precision`: enable float16 training on compatible accelerators.
+- `pretrained_checkpoint` / `resume_checkpoint`: point at `checkpoints/epoch_XXXX`
+  directories written by Orbax to warm start or resume training.
+- `freeze_stem`, `freeze_classifier`, `frozen_stages`: compatible with the new `build_finetune_mask` traversal over `nnx.state(model)` so you can freeze arbitrary blocks while keeping optimizer masking in sync.
 
 Training outputs:
 
@@ -96,16 +99,17 @@ Training outputs:
 ### Checkpointing & Resuming
 
 Checkpoint IO is centralized in `src/checkpointing.py`, which keeps the latest
-`max_checkpoints` directories (default three) and works for both the current
-Linen train state and the upcoming Flax NNX modules. Orbax currently stringifies
-integer dict keys when restoring (see
-[google/orbax#2561](https://github.com/google/orbax/issues/2561)), so the helper
-automatically converts those keys back to integers before the state is consumed
-or passed into `nnx.update`. To resume a run, either set
+`max_checkpoints` directories (default three) and now targets Flax NNX modules,
+optimizers, and RNG containers. Orbax currently stringifies integer dict keys
+when restoring (see [google/orbax#2561](https://github.com/google/orbax/issues/2561)),
+so the helper automatically converts those keys back to integers before the state
+is consumed or passed into `nnx.update`. To resume a run, either set
 `training.resume_checkpoint` in your TOML or pass
 `--resume /path/to/checkpoints/epoch_XXXX` on the CLI -- the helper will pick up
-the payload, restore RNG state, and trim any stale checkpoints after the next
-save.
+the payload (model params, optimizer PyTrees, RNGs, dynamic-scale state), restore
+everything into the current `TrainState`, and trim any stale checkpoints after the next
+save. Set `training.pretrained_checkpoint` to a matching directory when you only
+need the model weights (the optimizer state is reinitialized for fine-tuning).
 
 ---
 
@@ -120,6 +124,8 @@ uv run ty check src
 uv run pytest --cov=src
 ```
 
+The pytest suite mirrors every major NNX code path (model modules, optimizer masking,
+checkpoint round-trips, CLI integration) and enforces **100%** statement coverage.
 For a quick local run you can also invoke the convenience harness:
 
 ```bash
@@ -128,7 +134,11 @@ uv run python scripts/run_tests.py --cov
 
 ### Smoke CI Workflow
 
-The GitHub smoke workflow stages a synthetic FER dataset inside the runner's temporary directory before kicking off a one-epoch training run.
+The GitHub smoke workflow stages a synthetic FER dataset inside the runner's
+temporary directory before kicking off a one-epoch training run. This test hits
+the exact Flax NNX codepath (model state + optimizer + RNG streams) used for
+full experiments, so reproducing it locally is the fastest way to sanity-check
+the migration.
 
 **Important:** The workflow intentionally recreates its staging directory from scratch. Do **not** point it at your real FER dataset. When running the smoke scenario locally:
 
