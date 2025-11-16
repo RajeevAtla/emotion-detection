@@ -63,7 +63,7 @@ Each class directory should use one of the canonical labels (`angry`, `disgusted
 
 ## Running Training
 
-`configs/example.toml` mirrors the CLI schema that `src.main` consumes. Tweak it (especially `data.data_dir`, augmentation knobs, and epoch counts) before running if your setup differs from the defaults.
+`configs/example.toml` mirrors the CLI schema that `src.main` consumes. Each config defines a top-level `[training]` table with nested `[training.data]` and `[training.data.augmentation]` sections—update `training.data.data_dir` plus any hyperparameters before running if your setup differs from the defaults.
 
 ```bash
 uv run python -m src.main \

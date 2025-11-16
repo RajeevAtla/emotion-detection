@@ -33,11 +33,12 @@ jobs:
         run: |
           uv run python - <<'PY'
           from pathlib import Path
-          import json
           import os
 
           import numpy as np
           from PIL import Image
+          import tomllib
+          import tomli_w
 
           classes = (
               "angry",
@@ -62,12 +63,16 @@ jobs:
                       arr = np.full((48, 48), value, dtype=np.uint8)
                       Image.fromarray(arr).save(class_dir / f"img{img_idx}.png")
 
-          config_template = Path("configs/smoke.json")
-          config_payload = json.loads(config_template.read_text())
-          config_payload.setdefault("data", {})["data_dir"] = str(data_root)
+          config_template = Path("configs/smoke.toml")
+          config_payload = tomllib.loads(config_template.read_text())
+          training_section = config_payload.setdefault("training", {})
+          data_section = training_section.setdefault("data", {})
+          data_section["data_dir"] = str(data_root)
 
-          config_path = runner_temp / "smoke_ci.json"
-          config_path.write_text(json.dumps(config_payload, indent=2))
+          config_path = runner_temp / "smoke_ci.toml"
+          config_path.write_text(
+              tomli_w.dumps(config_payload), encoding="utf-8"
+          )
 
           github_output = Path(os.environ["GITHUB_OUTPUT"])
           with github_output.open("a") as fh:
@@ -86,7 +91,7 @@ jobs:
       - name: Validate smoke metrics
         run: |
           uv run python - <<'PY'
-          import json
+          import tomllib
           import math
           from pathlib import Path
 
@@ -97,10 +102,10 @@ jobs:
           if not run_dirs:
               raise SystemExit("no run directories found")
           latest = run_dirs[-1]
-          metrics_path = latest / "metrics.json"
+          metrics_path = latest / "metrics.toml"
           if not metrics_path.exists():
-              raise SystemExit(f"metrics.json missing at {metrics_path}")
-          metrics = json.loads(metrics_path.read_text())
+              raise SystemExit(f"metrics.toml missing at {metrics_path}")
+          metrics = tomllib.loads(metrics_path.read_text())
           required = [
               "train_loss",
               "train_accuracy",

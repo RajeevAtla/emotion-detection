@@ -28,6 +28,7 @@ addopts = "--cov=src --cov-report=term --cov-fail-under=100"
 dev = [
     "ruff>=0.14.1",
     "ty>=0.0.1a23",
+    "pygments>=2.18.0",
 ]
 
 [tool.ruff]

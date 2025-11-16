@@ -111,7 +111,12 @@ def load_config(path: Path | None) -> dict[str, ConfigValue]:
         raise ValueError(
             f"Config file {path} must define a mapping at the top level."
         )
-    return cast(dict[str, ConfigValue], dict(loaded))
+    training_section = loaded.get("training")
+    if not isinstance(training_section, Mapping):
+        raise ValueError(
+            "Config file must provide a top-level [training] table."
+        )
+    return cast(dict[str, ConfigValue], dict(training_section))
 
 
 class RuntimeAugmentationModel(BaseModel):

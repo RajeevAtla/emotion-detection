@@ -1,3 +1,4 @@
+[training]
 output_dir = "runs"
 model_depth = 34
 width_multiplier = 1
@@ -17,13 +18,13 @@ use_mixed_precision = false
 patience = 10
 experiment_name = "baseline"
 
-[data]
+[training.data]
 data_dir = "data"
 batch_size = 128
 val_ratio = 0.1
 augment = true
 
-[data.augmentation]
+[training.data.augmentation]
 horizontal_flip_prob = 0.5
 rotation_degrees = 15.0
 scale_range = [0.9, 1.1]

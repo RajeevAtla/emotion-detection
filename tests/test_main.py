@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import jax.numpy as jnp
 import numpy as np
 import pytest
+import tomli_w
 import tomllib
 from pydantic import ValidationError
 from PIL import Image
@@ -22,7 +23,7 @@ from src.train import TrainingConfig
 def test_load_config_success_and_errors(tmp_path: Path) -> None:
     """Test config loading success, missing files, and parsing errors."""
     toml_path = tmp_path / "config.toml"
-    toml_path.write_text('key = "value"\n')
+    toml_path.write_text("[training]\nkey = \"value\"\n")
     assert main.load_config(toml_path) == {"key": "value"}
 
     with pytest.raises(FileNotFoundError):
@@ -46,6 +47,14 @@ def test_load_config_requires_mapping(monkeypatch, tmp_path: Path) -> None:
         return ["not-a-mapping"]
 
     monkeypatch.setattr(main.tomllib, "load", fake_load)
+    with pytest.raises(ValueError):
+        main.load_config(config_path)
+
+
+def test_load_config_requires_training_table(tmp_path: Path) -> None:
+    """Ensure configs without [training] raise errors."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('root_key = "value"\n')
     with pytest.raises(ValueError):
         main.load_config(config_path)
 
@@ -200,11 +209,12 @@ def test_resolve_configs_and_main_entry(
     config_path.write_text(
         textwrap.dedent(
             f"""
-            [data]
-            data_dir = "{dataset_dir.as_posix()}"
-
+            [training]
             num_epochs = 2
             batch_size = 4
+
+            [training.data]
+            data_dir = "{dataset_dir.as_posix()}"
             """
         ).strip()
         + "\n"
@@ -261,14 +271,15 @@ def test_resolve_configs_applies_overrides_and_augmentation(
     config_path.write_text(
         textwrap.dedent(
             f"""
-            [data]
+            [training]
+            num_epochs = 3
+
+            [training.data]
             data_dir = "{dataset_dir.as_posix()}"
 
-            [data.augmentation]
+            [training.data.augmentation]
             enabled = true
             horizontal_flip_prob = 0.1
-
-            num_epochs = 3
             """
         ).strip()
         + "\n"
@@ -375,13 +386,13 @@ def test_summarize_ignores_nan_metrics() -> None:
 def test_example_config_round_trip(tmp_path: Path) -> None:
     """Ensure the example config file stays aligned with the schema."""
     example_config = Path("configs/example.toml")
-    config_text = example_config.read_text()
-    updated_text = config_text.replace(
-        'data_dir = "data"', f'data_dir = "{tmp_path.as_posix()}"', 1
-    )
+    payload = tomllib.loads(example_config.read_text())
+    training_payload = payload["training"]
+    training_payload["data"]["data_dir"] = tmp_path.as_posix()
     config_path = tmp_path / "config.toml"
-    config_path.write_text(updated_text)
-    payload = tomllib.loads(updated_text)
+    config_path.write_text(
+        tomli_w.dumps({"training": training_payload}), encoding="utf-8"
+    )
     args = SimpleNamespace(
         config=config_path,
         output_dir=None,
@@ -392,7 +403,7 @@ def test_example_config_round_trip(tmp_path: Path) -> None:
     )
     training_config = main.resolve_configs(args)
     assert training_config.data.data_dir == tmp_path
-    assert training_config.num_epochs == payload["num_epochs"]
+    assert training_config.num_epochs == training_payload["num_epochs"]
 
 
 def test_main_entrypoint_executes(
@@ -403,7 +414,10 @@ def test_main_entrypoint_executes(
     config_path.write_text(
         textwrap.dedent(
             f"""
-            [data]
+            [training]
+            num_epochs = 1
+
+            [training.data]
             data_dir = "{tmp_path.as_posix()}"
             """
         ).strip()
@@ -457,7 +471,7 @@ def test_main_entrypoint_executes(
 
 def test_resolve_configs_handles_non_mapping_data(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
-    config_path.write_text("data = []\n")
+    config_path.write_text("[training]\ndata = []\n")
     output_dir = tmp_path / "runs"
 
     args = SimpleNamespace(
