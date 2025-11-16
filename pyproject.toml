@@ -30,6 +30,9 @@ dev = [
     "ty>=0.0.1a23",
     "pygments>=2.18.0",
 ]
+cuda = [
+    "jax[cuda12]>=0.8.0",
+]
 
 [tool.ruff]
 line-length = 80

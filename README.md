@@ -39,6 +39,11 @@ uv python install 3.13
 uv sync
 ```
 
+Run `uv sync --group cuda` instead when you specifically want the CUDA-enabled
+`jax[cuda12]` wheels (skip the group on CPU-only machines or on systems without
+CUDA drivers).
+(Only runs on Linux).
+
 ### 3. Prepare Dataset
 
 Place FER-style data under `data/` with the following structure:
