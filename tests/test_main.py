@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import random
+import textwrap
 from pathlib import Path
 from types import SimpleNamespace
 
 import jax.numpy as jnp
 import numpy as np
 import pytest
+import tomllib
 from pydantic import ValidationError
 from PIL import Image
 
@@ -20,15 +21,33 @@ from src.train import TrainingConfig
 
 def test_load_config_success_and_errors(tmp_path: Path) -> None:
     """Test config loading success, missing files, and parsing errors."""
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({"key": "value"}))
-    assert main.load_config(config_path) == {"key": "value"}
+    toml_path = tmp_path / "config.toml"
+    toml_path.write_text('key = "value"\n')
+    assert main.load_config(toml_path) == {"key": "value"}
+
     with pytest.raises(FileNotFoundError):
-        main.load_config(tmp_path / "missing.json")
-    bad_path = tmp_path / "bad.json"
-    bad_path.write_text("not-json")
+        main.load_config(tmp_path / "missing.toml")
+    bad_path = tmp_path / "bad.toml"
+    bad_path.write_text("not = toml")
     with pytest.raises(ValueError):
         main.load_config(bad_path)
+    txt_path = tmp_path / "config.txt"
+    txt_path.write_text("key=value")
+    with pytest.raises(ValueError):
+        main.load_config(txt_path)
+
+
+def test_load_config_requires_mapping(monkeypatch, tmp_path: Path) -> None:
+    """Ensure non-mapping TOML payloads raise parsing errors."""
+    config_path = tmp_path / "bad.toml"
+    config_path.write_text('key = "value"\n')
+
+    def fake_load(_fh):
+        return ["not-a-mapping"]
+
+    monkeypatch.setattr(main.tomllib, "load", fake_load)
+    with pytest.raises(ValueError):
+        main.load_config(config_path)
 
 
 def test_load_config_none_returns_empty_dict() -> None:
@@ -114,7 +133,7 @@ def test_build_dataclass_converts_paths(tmp_path: Path) -> None:
     """Test conversion to dataclasses including nested path fields."""
     payload = {
         "data_dir": str(tmp_path),
-        "stats_cache_path": str(tmp_path / "stats.json"),
+        "stats_cache_path": str(tmp_path / "stats.toml"),
         "augment": False,
         "augmentation": {
             "horizontal_flip_prob": 0.3,
@@ -140,7 +159,7 @@ def test_prepare_environment_sets_seeds() -> None:
 
 
 def test_to_serializable_handles_complex_types(tmp_path: Path) -> None:
-    """Test conversion of config, paths, and arrays into JSON-compatible types."""
+    """Test conversion of config, paths, and arrays into serializable types."""
     config = TrainingConfig(
         data=DataModuleConfig(data_dir=tmp_path),
         output_dir=tmp_path,
@@ -167,8 +186,8 @@ def test_persist_artifacts_and_summarize(tmp_path: Path) -> None:
     main.persist_artifacts(config.output_dir, config, metrics)
     summary = main.summarize(metrics)
     assert "Final train loss" in summary
-    assert (config.output_dir / "config_resolved.json").exists()
-    assert (config.output_dir / "metrics.json").exists()
+    assert (config.output_dir / "config_resolved.toml").exists()
+    assert (config.output_dir / "metrics.toml").exists()
 
 
 def test_resolve_configs_and_main_entry(
@@ -177,13 +196,19 @@ def test_resolve_configs_and_main_entry(
     """Test CLI resolution and main execution with monkeypatched dependencies."""
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
-    config_payload = {
-        "data": {"data_dir": str(dataset_dir)},
-        "num_epochs": 2,
-        "batch_size": 4,
-    }
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps(config_payload))
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        textwrap.dedent(
+            f"""
+            [data]
+            data_dir = "{dataset_dir.as_posix()}"
+
+            num_epochs = 2
+            batch_size = 4
+            """
+        ).strip()
+        + "\n"
+    )
     output_dir = tmp_path / "runs"
 
     args = SimpleNamespace(
@@ -232,15 +257,22 @@ def test_resolve_configs_applies_overrides_and_augmentation(
     """Test CLI overrides for resume, epochs, and augmentation payloads."""
     dataset_dir = tmp_path / "data"
     dataset_dir.mkdir()
-    config_payload = {
-        "data": {
-            "data_dir": str(dataset_dir),
-            "augmentation": {"enabled": True, "horizontal_flip_prob": 0.1},
-        },
-        "num_epochs": 3,
-    }
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps(config_payload))
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        textwrap.dedent(
+            f"""
+            [data]
+            data_dir = "{dataset_dir.as_posix()}"
+
+            [data.augmentation]
+            enabled = true
+            horizontal_flip_prob = 0.1
+
+            num_epochs = 3
+            """
+        ).strip()
+        + "\n"
+    )
 
     args = SimpleNamespace(
         config=config_path,
@@ -342,11 +374,14 @@ def test_summarize_ignores_nan_metrics() -> None:
 
 def test_example_config_round_trip(tmp_path: Path) -> None:
     """Ensure the example config file stays aligned with the schema."""
-    example_config = Path("configs/example.json")
-    payload = json.loads(example_config.read_text())
-    payload["data"]["data_dir"] = str(tmp_path)
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps(payload))
+    example_config = Path("configs/example.toml")
+    config_text = example_config.read_text()
+    updated_text = config_text.replace(
+        'data_dir = "data"', f'data_dir = "{tmp_path.as_posix()}"', 1
+    )
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(updated_text)
+    payload = tomllib.loads(updated_text)
     args = SimpleNamespace(
         config=config_path,
         output_dir=None,
@@ -364,8 +399,16 @@ def test_main_entrypoint_executes(
     monkeypatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Test that the CLI entrypoint executes end-to-end with faked training."""
-    config_path = tmp_path / "cfg.json"
-    config_path.write_text(json.dumps({"data": {"data_dir": str(tmp_path)}}))
+    config_path = tmp_path / "cfg.toml"
+    config_path.write_text(
+        textwrap.dedent(
+            f"""
+            [data]
+            data_dir = "{tmp_path.as_posix()}"
+            """
+        ).strip()
+        + "\n"
+    )
     output_dir = tmp_path / "runs"
 
     def write_sample(split: str, class_name: str, value: int) -> None:
@@ -413,8 +456,8 @@ def test_main_entrypoint_executes(
 
 
 def test_resolve_configs_handles_non_mapping_data(tmp_path: Path) -> None:
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({"data": []}))
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("data = []\n")
     output_dir = tmp_path / "runs"
 
     args = SimpleNamespace(

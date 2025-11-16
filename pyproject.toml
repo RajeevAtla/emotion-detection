@@ -18,6 +18,7 @@ dependencies = [
     "scipy>=1.16.2",
     "tensorboard>=2.20.0",
     "tensorboardx>=2.6.4",
+    "tomli-w>=1.0.0",
 ]
 
 [tool.pytest.ini_options]

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 import math
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
@@ -13,6 +12,8 @@ from typing import Optional, Tuple
 
 import jax.numpy as jnp
 import numpy as np
+import tomli_w
+import tomllib
 from PIL import Image
 from scipy.ndimage import gaussian_filter
 
@@ -35,7 +36,7 @@ CLASS_TO_INDEX: dict[str, int] = {
     name: idx for idx, name in enumerate(CLASS_NAMES)
 }
 IMAGE_EXTENSIONS: Tuple[str, ...] = (".png", ".jpg", ".jpeg")
-DEFAULT_STATS_FILENAME = "stats_train.json"
+DEFAULT_STATS_FILENAME = "stats_train.toml"
 
 
 @dataclass(frozen=True)
@@ -120,7 +121,7 @@ class DataModuleConfig:
         std: Optional precomputed dataset standard deviation.
         augment: If False, augmentation is skipped even for training.
         augmentation: Augmentation-specific configuration.
-        stats_cache_path: Optional path to cache statistics JSON.
+        stats_cache_path: Optional path to cache statistics TOML.
     """
 
     data_dir: Path
@@ -512,15 +513,15 @@ def compute_dataset_statistics(
 
     Args:
         samples: Sequence of samples contributing to statistics.
-        cache_path: Optional JSON cache to read/write.
+        cache_path: Optional TOML cache to read/write.
         force: If True, recompute statistics ignoring any cache.
 
     Returns:
         DatasetStats: Mean, standard deviation, and pixel count.
     """
     if cache_path is not None and cache_path.exists() and not force:
-        with cache_path.open("r", encoding="utf-8") as fh:
-            data = json.load(fh)
+        with cache_path.open("rb") as fh:
+            data = tomllib.load(fh)
         return DatasetStats(
             mean=float(data["mean"]),
             std=float(data["std"]),
@@ -546,8 +547,9 @@ def compute_dataset_statistics(
 
     if cache_path is not None:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        with cache_path.open("w", encoding="utf-8") as fh:
-            json.dump(dataclasses.asdict(stats), fh, indent=2)
+        cache_path.write_text(
+            tomli_w.dumps(dataclasses.asdict(stats)), encoding="utf-8"
+        )
 
     return stats
 

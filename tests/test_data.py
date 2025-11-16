@@ -88,7 +88,7 @@ def test_emotion_data_module_end_to_end(tiny_dataset: Path) -> None:
 def test_dataset_statistics_cache(tmp_path: Path, tiny_dataset: Path) -> None:
     """Test that dataset statistics are cached and reused."""
     samples = _scan_split(tiny_dataset, split="train")
-    cache_path = tmp_path / "stats.json"
+    cache_path = tmp_path / "stats.toml"
     stats = compute_dataset_statistics(
         samples, cache_path=cache_path, force=True
     )

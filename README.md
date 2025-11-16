@@ -63,17 +63,17 @@ Each class directory should use one of the canonical labels (`angry`, `disgusted
 
 ## Running Training
 
-`configs/example.json` mirrors the CLI schema that `src.main` consumes. Tweak it (especially `data.data_dir`, augmentation knobs, and epoch counts) before running if your setup differs from the defaults.
+`configs/example.toml` mirrors the CLI schema that `src.main` consumes. Tweak it (especially `data.data_dir`, augmentation knobs, and epoch counts) before running if your setup differs from the defaults.
 
 ```bash
 uv run python -m src.main \
-  --config configs/example.json \
+  --config configs/example.toml \
   --output-dir runs \
   --seed 42 \
   --experiment-name baseline
 ```
 
-Key configuration options (via JSON or CLI overrides):
+Key configuration options (via TOML or CLI overrides):
 
 - `data.data_dir`: path to dataset.
 - `model_depth`: `18` or `34`.
@@ -85,7 +85,7 @@ Training outputs:
 - A timestamped run directory `<output-root>/<timestamp>` (or `<timestamp-experiment>` when `--experiment-name` is set).
 - `checkpoints/` containing Orbax snapshots (best validation checkpoints are automatically reloaded before final testing).
 - `tensorboard/` with scalar curves, micro/macro-F1 traces, and confusion-matrix summaries.
-- `config_resolved.json` and `metrics.json` capturing the exact hyperparameters and the per-epoch history (accuracy, micro/macro-F1, per-class F1 text payloads, etc.).
+- `config_resolved.toml` and `metrics.toml` capturing the exact hyperparameters and the per-epoch history (accuracy, micro/macro-F1, per-class F1 text payloads, etc.).
 
 ---
 
@@ -114,9 +114,9 @@ The GitHub smoke workflow stages a synthetic FER dataset inside the runner's tem
 
 1. Place your production dataset outside this repository (or keep a separate backup).
 2. Create a scratch directory (for example `RUNNER_TEMP=$(mktemp -d)`).
-3. Copy `configs/smoke.json` into that scratch directory and edit `data.data_dir` to reference the scratch path.
+3. Copy `configs/smoke.toml` into that scratch directory and edit `data.data_dir` to reference the scratch path.
 4. Populate the scratch directory with a handful of tiny grayscale images per class (one or two is enough).
-5. Execute `uv run python -m src.main --config <scratch>/smoke.json --output-dir runs --seed 0 --experiment-name smoke-local`.
+5. Execute `uv run python -m src.main --config <scratch>/smoke.toml --output-dir runs --seed 0 --experiment-name smoke-local`.
 
 Following these steps mirrors the CI behaviour while ensuring the repository's `data/` folder-and your real dataset-remain untouched.
 
@@ -131,8 +131,8 @@ These mirror the GitHub Actions workflow located in `.github/workflows/ci.yml`.
 
 ```
 configs/
-  example.json    # Baseline configuration referenced in the README
-  smoke.json      # CI smoke-test configuration (patch its paths before use)
+  example.toml    # Baseline configuration referenced in the README
+  smoke.toml      # CI smoke-test configuration (patch its paths before use)
 scripts/
   run_tests.py    # Convenience entry point for pytest/coverage
 src/

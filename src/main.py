@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import json
 import math
 import random
 from datetime import datetime
@@ -12,6 +11,8 @@ from pathlib import Path
 from collections.abc import Mapping, Sequence
 from typing import Optional, Tuple, TypeVar, Union, cast
 
+import tomli_w
+import tomllib
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -20,14 +21,14 @@ from pydantic import BaseModel, Field, field_validator
 from src.data import AugmentationConfig, DataModuleConfig
 from src.train import TrainingConfig, train_and_evaluate
 
-JSONValue = Union[
+ConfigValue = Union[
     str,
     int,
     float,
     bool,
     None,
-    Mapping[str, "JSONValue"],
-    Sequence["JSONValue"],
+    Mapping[str, "ConfigValue"],
+    Sequence["ConfigValue"],
 ]
 SummaryMetrics = Mapping[
     str, Union[int, float, None, str, Mapping[str, Sequence[float]]]
@@ -47,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=Path,
-        help="Path to JSON configuration file describing data/model/training settings.",
+        help="Path to a TOML configuration file describing data/model/training settings.",
     )
     parser.add_argument(
         "--output-dir",
@@ -77,31 +78,40 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_config(path: Path | None) -> dict[str, JSONValue]:
-    """Load a JSON configuration file if provided.
+def load_config(path: Path | None) -> dict[str, ConfigValue]:
+    """Load a TOML configuration file if provided.
 
     Args:
-        path: Path to the JSON file or ``None``.
+        path: Path to the TOML file or ``None``.
 
     Returns:
-        dict[str, JSONValue]: Parsed configuration dictionary.
+        dict[str, ConfigValue]: Parsed configuration dictionary.
 
     Raises:
         FileNotFoundError: If ``path`` does not exist.
-        ValueError: If the JSON cannot be parsed.
+        ValueError: If the file cannot be parsed or is unsupported.
     """
     if path is None:
         return {}
     if not path.exists():
         raise FileNotFoundError(f"Config file not found at {path}")
-    with path.open("r", encoding="utf-8") as fh:
+    suffix = path.suffix.lower()
+    if suffix not in {".toml", ".tml"}:
+        raise ValueError(
+            f"Unsupported config format for {path}. Expected a .toml extension."
+        )
+    with path.open("rb") as fh:
         try:
-            loaded = json.load(fh)
-        except json.JSONDecodeError as exc:
+            loaded = tomllib.load(fh)
+        except tomllib.TOMLDecodeError as exc:
             raise ValueError(
-                f"Failed to parse JSON config at {path}: {exc}"
+                f"Failed to parse TOML config at {path}: {exc}"
             ) from exc
-    return cast(dict[str, JSONValue], loaded)
+    if not isinstance(loaded, Mapping):
+        raise ValueError(
+            f"Config file {path} must define a mapping at the top level."
+        )
+    return cast(dict[str, ConfigValue], dict(loaded))
 
 
 class RuntimeAugmentationModel(BaseModel):
@@ -202,7 +212,7 @@ class RuntimeTrainingModel(BaseModel):
         return value
 
 
-def _build_dataclass(cls: type[T], raw: Mapping[str, JSONValue]) -> T:
+def _build_dataclass(cls: type[T], raw: Mapping[str, ConfigValue]) -> T:
     """Build a dataclass instance from a raw mapping.
 
     Args:
@@ -270,7 +280,7 @@ def resolve_configs(args: argparse.Namespace) -> TrainingConfig:
         else config_model.seed or config_model.data.seed
     )
 
-    data_dict = cast(dict[str, JSONValue], config_model.data.model_dump())
+    data_dict = cast(dict[str, ConfigValue], config_model.data.model_dump())
     data_dict["seed"] = training_seed
     data_dict["batch_size"] = config_model.batch_size
     if data_dict.get("augmentation") is not None:
@@ -319,8 +329,8 @@ def prepare_environment(seed: int) -> None:
     jax.random.PRNGKey(seed)
 
 
-def to_serializable(obj: object) -> JSONValue:
-    """Convert complex objects into JSON-serializable structures."""
+def to_serializable(obj: object) -> ConfigValue:
+    """Convert complex objects into serialization-friendly structures."""
     if isinstance(obj, Path):
         return str(obj)
     if isinstance(obj, (np.floating, np.integer, jnp.generic)):
@@ -328,7 +338,7 @@ def to_serializable(obj: object) -> JSONValue:
     if isinstance(obj, (np.ndarray, jnp.ndarray)):
         data = obj.tolist()
         if isinstance(data, Sequence) and not isinstance(data, (str, bytes)):
-            return cast(JSONValue, [to_serializable(v) for v in data])
+            return cast(ConfigValue, [to_serializable(v) for v in data])
         return to_serializable(data)
     if dataclasses.is_dataclass(obj):
         field_values = {
@@ -336,17 +346,39 @@ def to_serializable(obj: object) -> JSONValue:
             for field in dataclasses.fields(obj)
         }
         return cast(
-            JSONValue, {k: to_serializable(v) for k, v in field_values.items()}
+            ConfigValue, {k: to_serializable(v) for k, v in field_values.items()}
         )
     if isinstance(obj, Mapping):
-        return cast(JSONValue, {k: to_serializable(v) for k, v in obj.items()})
+        return cast(ConfigValue, {k: to_serializable(v) for k, v in obj.items()})
     if isinstance(obj, Sequence) and not isinstance(obj, (str, bytes)):
-        return cast(JSONValue, [to_serializable(v) for v in obj])
-    return cast(JSONValue, obj)
+        return cast(ConfigValue, [to_serializable(v) for v in obj])
+    return cast(ConfigValue, obj)
+
+
+def prune_nones(obj: ConfigValue) -> ConfigValue:
+    """Recursively remove ``None`` entries from mappings and sequences."""
+
+    if obj is None:
+        return None
+    if isinstance(obj, Mapping):
+        pruned: dict[str, ConfigValue] = {}
+        for key, value in obj.items():
+            new_value = prune_nones(cast(ConfigValue, value))
+            if new_value is not None:
+                pruned[key] = new_value
+        return cast(ConfigValue, pruned)
+    if isinstance(obj, Sequence) and not isinstance(obj, (str, bytes)):
+        filtered: list[ConfigValue] = []
+        for value in obj:
+            new_value = prune_nones(cast(ConfigValue, value))
+            if new_value is not None:
+                filtered.append(new_value)
+        return cast(ConfigValue, filtered)
+    return obj
 
 
 def persist_artifacts(
-    output_dir: Path, config: TrainingConfig, metrics: Mapping[str, JSONValue]
+    output_dir: Path, config: TrainingConfig, metrics: Mapping[str, ConfigValue]
 ) -> None:
     """Write resolved configuration and metrics to disk.
 
@@ -356,12 +388,16 @@ def persist_artifacts(
         metrics: Dictionary of run metrics to write.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    with (output_dir / "config_resolved.json").open(
-        "w", encoding="utf-8"
-    ) as fh:
-        json.dump(to_serializable(config), fh, indent=2)
-    with (output_dir / "metrics.json").open("w", encoding="utf-8") as fh:
-        json.dump(to_serializable(metrics), fh, indent=2)
+    config_path = output_dir / "config_resolved.toml"
+    metrics_path = output_dir / "metrics.toml"
+    config_payload = prune_nones(
+        cast(Mapping[str, ConfigValue], to_serializable(config))
+    )
+    metrics_payload = prune_nones(
+        cast(Mapping[str, ConfigValue], to_serializable(dict(metrics)))
+    )
+    config_path.write_text(tomli_w.dumps(config_payload), encoding="utf-8")
+    metrics_path.write_text(tomli_w.dumps(metrics_payload), encoding="utf-8")
 
 
 def summarize(metrics: SummaryMetrics) -> str:
