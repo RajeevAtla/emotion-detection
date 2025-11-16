@@ -16,6 +16,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import pytest
+from flax import nnx
 from flax.core import freeze
 from flax.training.dynamic_scale import DynamicScale
 
@@ -23,20 +24,29 @@ from src import train
 from src.data import DataModuleConfig
 from src.model import ResNet
 from src.train import (
+    NNXTrainState,
     TrainingConfig,
     TrainState,
     build_eval_step,
+    build_nnx_eval_step,
+    build_nnx_train_step,
     build_train_step,
     compute_confusion_matrix,
     create_learning_rate_schedule,
+    create_nnx_train_state,
     create_optimizer,
     create_train_state,
     cross_entropy_loss,
     format_confusion_matrix,
+    initialize_nnx_model,
     maybe_restore_checkpoint,
+    maybe_restore_nnx_checkpoint,
     predict_batches,
+    predict_batches_nnx,
     save_checkpoint,
+    save_nnx_checkpoint,
     train_and_evaluate,
+    train_and_evaluate_nnx,
 )
 
 
@@ -147,10 +157,34 @@ def _make_train_state(dynamic: bool = False) -> TrainState:
     return state
 
 
+class TinyNNXModel(nnx.Module):
+    """Minimal NNX module for checkpoint/prediction tests."""
+
+    def __init__(self, rngs: nnx.Rngs):
+        self.linear = nnx.Linear(1, 1, rngs=rngs)
+
+    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+        return self.linear(x)
+
+    def train(self) -> None:  # pragma: no cover - simple no-op
+        return
+
+    def eval(self) -> None:  # pragma: no cover - simple no-op
+        return
+
+
+def _make_nnx_state() -> NNXTrainState:
+    """Build an ``NNXTrainState`` backed by the tiny module."""
+    rngs = nnx.Rngs(0)
+    model = TinyNNXModel(rngs=rngs.fork())
+    optimizer = nnx.Optimizer(model, optax.adam(1e-3), wrt=nnx.Param)
+    return NNXTrainState(model=model, optimizer=optimizer, rngs=rngs, dynamic_scale=None)
+
+
 class DummyModel:
     """Lightweight ResNet stand-in for train/eval step tests."""
 
-    config = train.create_resnet(depth=18, num_classes=2).config
+    config = SimpleNamespace(num_classes=2)
 
     @staticmethod
     def apply(
@@ -270,6 +304,203 @@ def test_build_train_step_mixed_precision() -> None:
         train_step(state, (images, labels), jax.random.PRNGKey(1))
     finally:
         jax.config.update("jax_disable_jit", False)
+
+
+def test_initialize_nnx_model_returns_resnet(tmp_path: Path) -> None:
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=tmp_path),
+        output_dir=tmp_path,
+        model_depth=18,
+    )
+    model, rngs = initialize_nnx_model(config, num_classes=2)
+    assert isinstance(model, ResNet)
+    assert isinstance(rngs, nnx.Rngs)
+
+
+def test_create_nnx_train_state_initializes_optimizer(tmp_path: Path) -> None:
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=tmp_path),
+        output_dir=tmp_path,
+        model_depth=18,
+    )
+    model, rngs = initialize_nnx_model(config, num_classes=2)
+    schedule = create_learning_rate_schedule(config, steps_per_epoch=1)
+    state = create_nnx_train_state(model, config, schedule, rngs=rngs)
+    assert isinstance(state, NNXTrainState)
+    assert hasattr(state.optimizer, "tx")
+
+
+def test_save_and_restore_nnx_checkpoint_roundtrip(tmp_path: Path) -> None:
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=tmp_path),
+        output_dir=tmp_path,
+    )
+    state = _make_nnx_state()
+    baseline_params = nnx.to_pure_dict(nnx.state(state.model, nnx.Param))
+    ckpt_path = save_nnx_checkpoint(state, config, epoch=1)
+    params_state = nnx.state(state.model, nnx.Param)
+    for _, variable in params_state.flat_state():
+        variable.value = variable.value + 1.0
+    resume_config = replace(config, resume_checkpoint=ckpt_path)
+    restored = maybe_restore_nnx_checkpoint(resume_config, state)
+    assert restored is not None
+    restored_params = nnx.to_pure_dict(nnx.state(restored.model, nnx.Param))
+    assert restored_params == baseline_params
+
+
+def test_predict_batches_nnx_handles_empty_batches(tmp_path: Path) -> None:
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=tmp_path),
+        output_dir=tmp_path,
+    )
+    state = _make_nnx_state()
+    preds, labels = predict_batches_nnx(state, [], config)
+    assert preds.size == 0
+    assert labels.size == 0
+
+
+def test_build_nnx_train_step_placeholder() -> None:
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=Path(".")),
+        output_dir=Path("out"),
+    )
+    train_step = build_nnx_train_step(config, class_weights=None)
+    state = _make_nnx_state()
+    batch = (jnp.ones((1, 1, 1, 1)), jnp.zeros((1,), dtype=jnp.int32))
+    with pytest.raises(NotImplementedError):
+        train_step(state, batch)
+
+
+def test_build_nnx_eval_step_placeholder() -> None:
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=Path(".")),
+        output_dir=Path("out"),
+    )
+    eval_step = build_nnx_eval_step(config)
+    state = _make_nnx_state()
+    batch = (jnp.ones((1, 1, 1, 1)), jnp.zeros((1,), dtype=jnp.int32))
+    with pytest.raises(NotImplementedError):
+        eval_step(state, batch)
+
+
+def test_train_and_evaluate_nnx_runs_with_stubs(monkeypatch, tmp_path: Path) -> None:
+    class MinimalDataModule:
+        class_weights = jnp.ones(2)
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def setup(self):
+            return
+
+        def split_counts(self):
+            return {
+                "train": {"neg": 1, "pos": 1},
+                "val": {"neg": 1, "pos": 1},
+                "test": {"neg": 1, "pos": 1},
+            }
+
+        def train_batches(self, **kwargs):
+            def generator():
+                yield jnp.ones((1, 1, 1, 1)), jnp.zeros((1,), dtype=jnp.int32)
+
+            return generator()
+
+        def val_batches(self, **kwargs):
+            return [(jnp.ones((1, 1, 1, 1)), jnp.zeros((1,), dtype=jnp.int32))]
+
+        def test_batches(self, **kwargs):
+            return [(jnp.ones((1, 1, 1, 1)), jnp.zeros((1,), dtype=jnp.int32))]
+
+    monkeypatch.setattr(train, "EmotionDataModule", MinimalDataModule)
+
+    class FakeNNXModel:
+        config = SimpleNamespace(num_classes=2)
+
+        def train(self):
+            return
+
+        def eval(self):
+            return
+
+    fake_state = NNXTrainState(
+        model=FakeNNXModel(),
+        optimizer=SimpleNamespace(),
+        rngs=nnx.Rngs(0),
+        dynamic_scale=None,
+    )
+
+    monkeypatch.setattr(
+        train,
+        "initialize_nnx_model",
+        lambda *args, **kwargs: (FakeNNXModel(), nnx.Rngs(0)),
+    )
+    monkeypatch.setattr(
+        train,
+        "create_nnx_train_state",
+        lambda *args, **kwargs: fake_state,
+    )
+
+    step_counter = {"count": 0}
+
+    def stub_train_step(state, batch):
+        step_counter["count"] += 1
+        return state, {
+            "loss": jnp.array(0.1, dtype=jnp.float32),
+            "accuracy": jnp.array(1.0, dtype=jnp.float32),
+        }
+
+    def stub_eval_step(state, batch):
+        return (
+            {
+                "loss": jnp.array(0.1, dtype=jnp.float32),
+                "accuracy": jnp.array(1.0, dtype=jnp.float32),
+            },
+            jnp.zeros(batch[0].shape[0], dtype=jnp.int32),
+        )
+
+    predict_calls = {"count": 0}
+
+    def stub_predict_batches(state, batches, config_obj):
+        predict_calls["count"] += 1
+        return jnp.zeros((1,), dtype=jnp.int32), jnp.zeros(
+            (1,), dtype=jnp.int32
+        )
+
+    saved_epochs: list[int] = []
+
+    def stub_save_checkpoint(state, config_obj, epoch):
+        saved_epochs.append(epoch)
+        return tmp_path / f"epoch_{epoch:04d}"
+
+    monkeypatch.setattr(
+        train, "build_nnx_train_step", lambda *args, **kwargs: stub_train_step
+    )
+    monkeypatch.setattr(
+        train, "build_nnx_eval_step", lambda *args, **kwargs: stub_eval_step
+    )
+    monkeypatch.setattr(train, "predict_batches_nnx", stub_predict_batches)
+    monkeypatch.setattr(
+        train, "save_nnx_checkpoint", lambda *args, **kwargs: stub_save_checkpoint(*args, **kwargs)
+    )
+    monkeypatch.setattr(
+        train, "maybe_restore_nnx_checkpoint", lambda config, state: None
+    )
+
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=tmp_path, batch_size=1),
+        output_dir=tmp_path / "nnx-run",
+        num_epochs=2,
+        checkpoint_every=1,
+        patience=2,
+        log_every=1,
+    )
+
+    metrics = train_and_evaluate_nnx(config)
+    assert step_counter["count"] > 0
+    assert predict_calls["count"] == 1
+    assert metrics["best_checkpoint"] is not None
+    assert saved_epochs, "NNX checkpoints were not saved"
 
 
 def test_build_eval_step_returns_predictions() -> None:

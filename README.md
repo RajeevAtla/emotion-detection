@@ -11,6 +11,7 @@ facial expression classification on the FER-style 48x48 grayscale dataset.
 - **JAX/Flax ResNet**: configurable CIFAR-style ResNet-18/34 backbones with fine-tuning support.
 - **Data Module**: deterministic preprocessing, augmentation, and stratified splitting.
 - **Training Loop**: Optax optimizers, mixed precision, checkpointing, early stopping, and TensorBoard logging.
+- **Checkpointing Helpers**: Orbax-based checkpoint saves with automatic pruning plus a shim that reverses stringified integer keys when resuming (workaround for google/orbax#2561 and aligned with the Flax NNX migration plan).
 - **Metrics**: Accuracy, F1, macro-F1, and confusion matrices via MetraX.
 - **Testing**: Extensive pytest/Chex coverage (unit + integration) with 100% statement coverage.
 - **Tooling**: Managed by `uv` for reproducible dependency resolution.
@@ -91,6 +92,20 @@ Training outputs:
 - `checkpoints/` containing Orbax snapshots (best validation checkpoints are automatically reloaded before final testing).
 - `tensorboard/` with scalar curves, micro/macro-F1 traces, and confusion-matrix summaries.
 - `config_resolved.toml` and `metrics.toml` capturing the exact hyperparameters and the per-epoch history (accuracy, micro/macro-F1, per-class F1 text payloads, etc.).
+
+### Checkpointing & Resuming
+
+Checkpoint IO is centralized in `src/checkpointing.py`, which keeps the latest
+`max_checkpoints` directories (default three) and works for both the current
+Linen train state and the upcoming Flax NNX modules. Orbax currently stringifies
+integer dict keys when restoring (see
+[google/orbax#2561](https://github.com/google/orbax/issues/2561)), so the helper
+automatically converts those keys back to integers before the state is consumed
+or passed into `nnx.update`. To resume a run, either set
+`training.resume_checkpoint` in your TOML or pass
+`--resume /path/to/checkpoints/epoch_XXXX` on the CLI -- the helper will pick up
+the payload, restore RNG state, and trim any stale checkpoints after the next
+save.
 
 ---
 

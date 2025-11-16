@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import math
-import shutil
-import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -14,19 +12,19 @@ import jax
 import jax.numpy as jnp
 import metrax as mx
 import optax
-import orbax.checkpoint as ocp
 import numpy as np
+from flax import nnx
 from flax.core import FrozenDict, freeze
 from flax.training import train_state
 from flax.training.dynamic_scale import DynamicScale
 from tensorboardX import SummaryWriter
 
+from src import checkpointing
 from src.data import DataModuleConfig, EmotionDataModule
 from src.model import (
     ResNet,
     build_finetune_mask,
     create_resnet,
-    maybe_load_pretrained_params,
 )
 
 ArrayLike: TypeAlias = Union[jax.Array, jnp.ndarray]
@@ -42,6 +40,17 @@ TrainStepFn = Callable[
 EvalStepFn = Callable[
     ["TrainState", TrainBatch], Tuple[dict[str, jnp.ndarray], jnp.ndarray]
 ]
+NNXTrainStepFn = Callable[
+    ["NNXTrainState", TrainBatch], Tuple["NNXTrainState", dict[str, jnp.ndarray]]
+]
+NNXEvalStepFn = Callable[
+    ["NNXTrainState", TrainBatch], Tuple[dict[str, jnp.ndarray], jnp.ndarray]
+]
+
+
+def _cast_precision(images: jnp.ndarray, *, use_mixed_precision: bool) -> jnp.ndarray:
+    """Cast input images to the configured precision."""
+    return images.astype(jnp.float16 if use_mixed_precision else jnp.float32)
 TrainingHistory = dict[str, list[float]]
 TrainingSummary = dict[str, Union[float, int, None, str, TrainingHistory]]
 
@@ -119,6 +128,16 @@ class TrainState(train_state.TrainState):
     dynamic_scale: Optional[DynamicScale] = None
 
 
+@dataclass
+class NNXTrainState:
+    """Container describing the mutable pieces of training."""
+
+    model: ResNet
+    optimizer: nnx.Optimizer
+    rngs: nnx.Rngs
+    dynamic_scale: Optional[object] = None
+
+
 def create_learning_rate_schedule(
     config: TrainingConfig, steps_per_epoch: int
 ) -> optax.Schedule:
@@ -160,7 +179,7 @@ def create_learning_rate_schedule(
 def create_optimizer(
     config: TrainingConfig,
     lr_schedule: optax.Schedule,
-    mask: Optional[FrozenDict[str, BoolTree]] = None,
+    mask: Optional[BoolTree] = None,
 ) -> optax.GradientTransformation:
     """Create the optimizer transformation for training.
 
@@ -186,6 +205,70 @@ def create_optimizer(
     if mask is not None:
         tx = cast(optax.GradientTransformation, optax.masked(tx, mask))
     return tx
+
+
+def initialize_nnx_model(
+    config: TrainingConfig,
+    *,
+    num_classes: int,
+    seed: Optional[int] = None,
+    include_top: bool = True,
+) -> tuple[ResNet, nnx.Rngs]:
+    """Instantiate an NNX ResNet alongside its RNG container."""
+    rng_seed = config.seed if seed is None else seed
+    rngs = nnx.Rngs(rng_seed)
+    model = create_resnet(
+        depth=config.model_depth,
+        rngs=rngs.fork(),
+        num_classes=num_classes,
+        input_channels=getattr(config.data, "input_channels", 1),
+        width_multiplier=config.width_multiplier,
+        include_top=include_top,
+        input_projection_channels=None,
+        checkpoint_path=config.pretrained_checkpoint,
+        frozen_stages=config.frozen_stages,
+        freeze_stem=config.freeze_stem,
+        freeze_classifier=config.freeze_classifier,
+        dropout_rate=config.dropout_rate,
+    )
+    return model, rngs
+
+
+def create_nnx_train_state(
+    model: ResNet,
+    config: TrainingConfig,
+    lr_schedule: optax.Schedule,
+    *,
+    rngs: Optional[nnx.Rngs] = None,
+) -> NNXTrainState:
+    """Return an ``NNXTrainState`` ready for the new training loop."""
+    base_rngs = rngs or nnx.Rngs(config.seed)
+    params_tree = nnx.to_pure_dict(nnx.state(model, nnx.Param))
+
+    mask_tree: Optional[BoolTree] = None
+    if config.freeze_stem or config.freeze_classifier or config.frozen_stages:
+        mask_tree_result = build_finetune_mask(
+            params_tree,
+            config=replace(
+                model.config,
+                freeze_stem=config.freeze_stem,
+                freeze_classifier=config.freeze_classifier,
+                frozen_stages=config.frozen_stages,
+            ),
+        )
+        mask_tree = mask_tree_result
+
+    optimizer = nnx.Optimizer(
+        model,
+        create_optimizer(config, lr_schedule, mask_tree),
+        wrt=nnx.Param,
+    )
+    return NNXTrainState(
+        model=model,
+        optimizer=optimizer,
+        rngs=base_rngs,
+        dynamic_scale=None,
+    )
 
 
 def create_train_state(
@@ -510,6 +593,36 @@ def build_eval_step(model: ResNet, config: TrainingConfig) -> EvalStepFn:
     return jax.jit(eval_step)
 
 
+def build_nnx_train_step(
+    config: TrainingConfig,
+    *,
+    class_weights: Optional[jnp.ndarray],
+) -> NNXTrainStepFn:
+    """Placeholder for the NNX training step (implemented in Step 3)."""
+
+    def _unimplemented(
+        state: NNXTrainState, batch: TrainBatch
+    ) -> Tuple[NNXTrainState, dict[str, jnp.ndarray]]:
+        raise NotImplementedError(
+            "NNX train step not implemented yet; see Agent 2 Step 3."
+        )
+
+    return _unimplemented
+
+
+def build_nnx_eval_step(config: TrainingConfig) -> NNXEvalStepFn:
+    """Placeholder for the NNX evaluation step (implemented in Step 3)."""
+
+    def _unimplemented(
+        state: NNXTrainState, batch: TrainBatch
+    ) -> Tuple[dict[str, jnp.ndarray], jnp.ndarray]:
+        raise NotImplementedError(
+            "NNX eval step not implemented yet; see Agent 2 Step 3."
+        )
+
+    return _unimplemented
+
+
 def save_checkpoint(
     state: TrainState, config: TrainingConfig, epoch: int
 ) -> None:
@@ -526,20 +639,28 @@ def save_checkpoint(
         "opt_state": state.opt_state,
         "dynamic_scale": state.dynamic_scale,
     }
-    ckpt_dir = config.output_dir / "checkpoints"
-    ckpt_dir.mkdir(parents=True, exist_ok=True)
-    checkpointer = ocp.PyTreeCheckpointer()
-    target_path = ckpt_dir / f"epoch_{epoch:04d}"
-    save_args = ocp.args.PyTreeSave(payload)
-    checkpointer.save(
-        str(target_path), payload, save_args=save_args, force=True
+    layout = checkpointing.CheckpointLayout(
+        directory=config.output_dir / "checkpoints",
+        max_checkpoints=config.max_checkpoints,
     )
+    checkpointing.save_payload(payload, layout=layout, epoch=epoch)
 
-    existing = sorted(ckpt_dir.glob("epoch_*"))
-    excess = len(existing) - config.max_checkpoints
-    if excess > 0:
-        for path in existing[:excess]:
-            shutil.rmtree(path, ignore_errors=True)
+
+def save_nnx_checkpoint(
+    state: NNXTrainState, config: TrainingConfig, epoch: int
+) -> Path:
+    """Persist an ``NNXTrainState`` to disk."""
+    payload = {
+        "model": checkpointing.nnx_state(state.model),
+        "optimizer": nnx.state(state.optimizer),
+        "rngs": nnx.state(state.rngs),
+        "dynamic_scale": state.dynamic_scale,
+    }
+    layout = checkpointing.CheckpointLayout(
+        directory=config.output_dir / "checkpoints",
+        max_checkpoints=config.max_checkpoints,
+    )
+    return checkpointing.save_payload(payload, layout=layout, epoch=epoch)
 
 
 def maybe_restore_checkpoint(
@@ -556,26 +677,43 @@ def maybe_restore_checkpoint(
     """
     if config.resume_checkpoint is None:
         return None
-    checkpointer = ocp.PyTreeCheckpointer()
     template = {
         "params": state.params,
         "batch_stats": state.batch_stats,
         "opt_state": state.opt_state,
         "dynamic_scale": state.dynamic_scale,
     }
-    restore_args = ocp.args.PyTreeRestore(item=template)
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message="Sharding info not provided when restoring",
-            category=UserWarning,
-        )
-        restored = checkpointer.restore(
-            str(config.resume_checkpoint),
-            item=template,
-            restore_args=restore_args,
-        )
+    restored = checkpointing.restore_payload(
+        config.resume_checkpoint, template=template
+    )
     return cast(Optional[dict[str, ArrayTree]], restored)
+
+
+def maybe_restore_nnx_checkpoint(
+    config: TrainingConfig, state: NNXTrainState
+) -> Optional[NNXTrainState]:
+    """Restore an NNX checkpoint if ``resume_checkpoint`` is provided."""
+    if config.resume_checkpoint is None:
+        return None
+    template = {
+        "model": checkpointing.nnx_state(state.model),
+        "optimizer": nnx.state(state.optimizer),
+        "rngs": nnx.state(state.rngs),
+        "dynamic_scale": state.dynamic_scale,
+    }
+    restored = checkpointing.restore_payload(
+        config.resume_checkpoint, template=template
+    )
+    if restored is None:
+        return None
+    model_state = restored.get("model", template["model"])
+    optimizer_state = restored.get("optimizer", template["optimizer"])
+    rng_state = restored.get("rngs", template["rngs"])
+    checkpointing.apply_nnx_state(state.model, model_state)
+    nnx.update(state.optimizer, optimizer_state)
+    nnx.update(state.rngs, rng_state)
+    dynamic_scale = restored.get("dynamic_scale", state.dynamic_scale)
+    return replace(state, dynamic_scale=dynamic_scale)
 
 
 def predict_batches(
@@ -612,6 +750,29 @@ def predict_batches(
     if not preds:
         return jnp.array([], dtype=jnp.int32), jnp.array([], dtype=jnp.int32)
     return jnp.concatenate(preds, axis=0), jnp.concatenate(labels_list, axis=0)
+
+
+def predict_batches_nnx(
+    state: NNXTrainState,
+    batches: Iterable[Tuple[jnp.ndarray, jnp.ndarray]],
+    config: TrainingConfig,
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Generate predictions using the NNX model."""
+    preds: list[jnp.ndarray] = []
+    labels: list[jnp.ndarray] = []
+    state.model.eval()
+    for images, batch_labels in batches:
+        batch_images = _cast_precision(
+            images, use_mixed_precision=config.use_mixed_precision
+        )
+        logits = state.model(batch_images)
+        logits = cast(jnp.ndarray, logits)
+        preds.append(jnp.argmax(logits, axis=-1))
+        labels.append(batch_labels)
+    state.model.train()
+    if not preds:
+        return jnp.array([], dtype=jnp.int32), jnp.array([], dtype=jnp.int32)
+    return jnp.concatenate(preds, axis=0), jnp.concatenate(labels, axis=0)
 
 
 def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
@@ -810,22 +971,9 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
             "opt_state": state.opt_state,
             "dynamic_scale": state.dynamic_scale,
         }
-        restore_args = ocp.args.PyTreeRestore(item=template)
-        checkpointer = ocp.PyTreeCheckpointer()
-        try:
-            with warnings.catch_warnings():
-                warnings.filterwarnings(
-                    "ignore",
-                    message="Sharding info not provided when restoring",
-                    category=UserWarning,
-                )
-                restored_best = checkpointer.restore(
-                    str(best_checkpoint_dir),
-                    item=template,
-                    restore_args=restore_args,
-                )
-        except (FileNotFoundError, ValueError):
-            restored_best = None
+        restored_best = checkpointing.restore_payload(
+            best_checkpoint_dir, template=template
+        )
         if restored_best is not None:
             restored_mapping = cast(Mapping[str, ArrayTree], restored_best)
             state = state.replace(
@@ -876,6 +1024,245 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
         "test_macro_f1": test_macro_f1,
         "best_checkpoint": str(best_checkpoint_dir)
         if best_checkpoint_dir is not None
+        else None,
+        "best_epoch": best_epoch if best_epoch is not None else None,
+        "history": history,
+    }
+
+
+def train_and_evaluate_nnx(config: TrainingConfig) -> TrainingSummary:
+    """Run the training pipeline using the NNX-native state."""
+
+    rng = jax.random.PRNGKey(config.seed)
+    data_config = replace(config.data)
+    data_module = EmotionDataModule(data_config)
+    data_module.setup()
+    class_weights = data_module.class_weights
+    train_counts = data_module.split_counts()["train"]
+    num_train_examples = sum(train_counts.values())
+    steps_per_epoch = max(1, num_train_examples // config.batch_size)
+    train_schedule = create_learning_rate_schedule(config, steps_per_epoch)
+
+    model, rngs = initialize_nnx_model(
+        config,
+        num_classes=len(train_counts),
+        include_top=True,
+    )
+    state = create_nnx_train_state(
+        model, config, train_schedule, rngs=rngs
+    )
+    restored_state = maybe_restore_nnx_checkpoint(config, state)
+    if restored_state is not None:
+        state = restored_state
+
+    train_step = build_nnx_train_step(
+        config,
+        class_weights=class_weights,
+    )
+    eval_step = build_nnx_eval_step(config)
+
+    writer = SummaryWriter(log_dir=str(config.output_dir / "tensorboard"))
+    best_val_loss = jnp.inf
+    history: TrainingHistory = {
+        "train_loss": [],
+        "train_accuracy": [],
+        "val_loss": [],
+        "val_accuracy": [],
+        "val_f1": [],
+        "val_macro_f1": [],
+    }
+    epochs_without_improvement = 0
+    best_checkpoint_path: Optional[Path] = None
+    best_epoch: Optional[int] = None
+
+    for epoch in range(1, config.num_epochs + 1):
+        epoch_rng, rng = jax.random.split(rng)
+        epoch_seed = int(jax.random.randint(epoch_rng, (), 0, 2**31 - 1))
+        train_iter = data_module.train_batches(
+            rng_seed=epoch_seed,
+            batch_size=config.batch_size,
+        )
+        train_metrics = []
+        for step, (images, labels) in enumerate(train_iter, start=1):
+            state, metrics = train_step(state, (images, labels))
+            train_metrics.append(metrics)
+            if step % config.log_every == 0:
+                global_step = (epoch - 1) * steps_per_epoch + step
+                writer.add_scalars(
+                    "train_step",
+                    {
+                        "loss": float(metrics["loss"]),
+                        "accuracy": float(metrics["accuracy"]),
+                    },
+                    global_step=global_step,
+                )
+
+        if train_metrics:
+            epoch_train_loss = float(
+                jnp.mean(jnp.asarray([m["loss"] for m in train_metrics]))
+            )
+            epoch_train_acc = float(
+                jnp.mean(jnp.asarray([m["accuracy"] for m in train_metrics]))
+            )
+        else:
+            epoch_train_loss = float("nan")
+            epoch_train_acc = float("nan")
+
+        val_metrics: list[dict[str, jnp.ndarray]] = []
+        val_preds_list: list[jnp.ndarray] = []
+        val_labels_list: list[jnp.ndarray] = []
+        for images, labels in data_module.val_batches(
+            batch_size=config.batch_size
+        ):
+            metrics_dict, preds = eval_step(state, (images, labels))
+            val_metrics.append(metrics_dict)
+            val_preds_list.append(preds)
+            val_labels_list.append(labels)
+
+        if val_metrics:
+            epoch_val_loss = float(
+                jnp.mean(jnp.asarray([m["loss"] for m in val_metrics]))
+            )
+            epoch_val_acc = float(
+                jnp.mean(jnp.asarray([m["accuracy"] for m in val_metrics]))
+            )
+        else:
+            epoch_val_loss = float("nan")
+            epoch_val_acc = float("nan")
+
+        val_f1 = float("nan")
+        val_macro_f1 = float("nan")
+        per_class_f1: list[float] = []
+        if val_preds_list:
+            val_preds = jnp.concatenate(val_preds_list, axis=0)
+            val_labels = jnp.concatenate(val_labels_list, axis=0)
+            cm = compute_confusion_matrix(
+                preds=val_preds,
+                labels=val_labels,
+                num_classes=len(train_counts),
+            )
+            val_f1, val_macro_f1, per_class_f1 = compute_f1_metrics(cm)
+            class_names = list(train_counts.keys())
+            writer.add_text(
+                "epoch/confusion_matrix",
+                format_confusion_matrix(cm, class_names),
+                global_step=epoch,
+            )
+            per_class_line = ", ".join(
+                f"{name}: "
+                f"{'nan' if math.isnan(float(score)) else f'{float(score):.4f}'}"
+                for name, score in zip(class_names, per_class_f1)
+            )
+            if per_class_line:
+                writer.add_text(
+                    "epoch/val_per_class_f1",
+                    per_class_line,
+                    global_step=epoch,
+                )
+
+        writer.add_scalars(
+            "epoch_nnx",
+            {
+                "train_loss": epoch_train_loss,
+                "train_accuracy": epoch_train_acc,
+                "val_loss": epoch_val_loss,
+                "val_accuracy": epoch_val_acc,
+                "val_f1": val_f1,
+                "val_macro_f1": val_macro_f1,
+            },
+            global_step=epoch,
+        )
+
+        history["train_loss"].append(epoch_train_loss)
+        history["train_accuracy"].append(epoch_train_acc)
+        history["val_loss"].append(epoch_val_loss)
+        history["val_accuracy"].append(epoch_val_acc)
+        history["val_f1"].append(val_f1)
+        history["val_macro_f1"].append(val_macro_f1)
+
+        improved = (
+            not math.isnan(epoch_val_loss) and epoch_val_loss < best_val_loss
+        )
+        if improved:
+            best_val_loss = epoch_val_loss
+            epochs_without_improvement = 0
+            best_checkpoint_path = save_nnx_checkpoint(state, config, epoch)
+            best_epoch = epoch
+        else:
+            epochs_without_improvement += 1
+            if epoch % config.checkpoint_every == 0:
+                save_nnx_checkpoint(state, config, epoch)
+
+        if (
+            config.patience is not None
+            and epochs_without_improvement >= config.patience
+        ):
+            break
+
+    if best_checkpoint_path is not None and best_checkpoint_path.exists():
+        template = {
+            "model": checkpointing.nnx_state(state.model),
+            "optimizer": nnx.state(state.optimizer),
+            "rngs": nnx.state(state.rngs),
+            "dynamic_scale": state.dynamic_scale,
+        }
+        restored_best = checkpointing.restore_payload(
+            best_checkpoint_path, template=template
+        )
+        if restored_best is not None:
+            checkpointing.apply_nnx_state(
+                state.model, restored_best.get("model", template["model"])
+            )
+            nnx.update(
+                state.optimizer,
+                restored_best.get("optimizer", template["optimizer"]),
+            )
+            nnx.update(
+                state.rngs, restored_best.get("rngs", template["rngs"])
+            )
+            state = replace(
+                state,
+                dynamic_scale=restored_best.get(
+                    "dynamic_scale", state.dynamic_scale
+                ),
+            )
+
+    test_predictions, test_labels = predict_batches_nnx(
+        state,
+        data_module.test_batches(batch_size=config.batch_size),
+        config,
+    )
+    test_accuracy = None
+    test_f1: Optional[float] = None
+    test_macro_f1: Optional[float] = None
+    if test_predictions.size > 0:
+        test_metric = mx.Accuracy.from_model_output(
+            predictions=test_predictions,
+            labels=test_labels,
+        )
+        test_accuracy = float(test_metric.compute())
+        test_cm = compute_confusion_matrix(
+            preds=test_predictions,
+            labels=test_labels,
+            num_classes=len(train_counts),
+        )
+        micro, macro, _ = compute_f1_metrics(test_cm)
+        test_f1 = micro
+        test_macro_f1 = macro
+
+    writer.close()
+    return {
+        "train_loss": history["train_loss"][-1],
+        "train_accuracy": history["train_accuracy"][-1],
+        "val_loss": history["val_loss"][-1],
+        "val_accuracy": history["val_accuracy"][-1],
+        "val_f1": history["val_f1"][-1],
+        "val_macro_f1": history["val_macro_f1"][-1],
+        "test_accuracy": test_accuracy,
+        "test_f1": test_f1,
+        "test_macro_f1": test_macro_f1,
+        "best_checkpoint": str(best_checkpoint_path)
+        if best_checkpoint_path is not None
         else None,
         "best_epoch": best_epoch if best_epoch is not None else None,
         "history": history,
