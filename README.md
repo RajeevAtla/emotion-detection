@@ -57,11 +57,13 @@ data/
     ...
 ```
 
-Images must be 48x48 grayscale PNGs. The train split is used to create an internal validation set.
+Each class directory should use one of the canonical labels (`angry`, `disgusted`, `fearful`, `happy`, `neutral`, `sad`, `surprised`). Files may be PNG/JPG/JPEG; the loader always converts them to single-channel float32 tensors and assumes the FER 48x48 resolution (no automatic resizing beyond the augmentation pipeline), so keep inputs at that size. The training split automatically produces a stratified validation set controlled by `data.val_ratio` (10% by default).
 
 ---
 
 ## Running Training
+
+`configs/example.json` mirrors the CLI schema that `src.main` consumes. Tweak it (especially `data.data_dir`, augmentation knobs, and epoch counts) before running if your setup differs from the defaults.
 
 ```bash
 uv run python -m src.main \
@@ -80,11 +82,10 @@ Key configuration options (via JSON or CLI overrides):
 
 Training outputs:
 
-- Checkpoints under `<output-dir>/<timestamp>/<experiment>/checkpoints/`.
-- TensorBoard logs under `<output-dir>/<timestamp>/<experiment>/tensorboard/`.
-- JSON summaries (`config_resolved.json`, `metrics.json`).
-- Metrics include validation/test accuracy, micro-F1, and macro-F1 plus
-  per-class F1 breakdown text in TensorBoard.
+- A timestamped run directory `<output-root>/<timestamp>` (or `<timestamp-experiment>` when `--experiment-name` is set).
+- `checkpoints/` containing Orbax snapshots (best validation checkpoints are automatically reloaded before final testing).
+- `tensorboard/` with scalar curves, micro/macro-F1 traces, and confusion-matrix summaries.
+- `config_resolved.json` and `metrics.json` capturing the exact hyperparameters and the per-epoch history (accuracy, micro/macro-F1, per-class F1 text payloads, etc.).
 
 ---
 
@@ -93,9 +94,9 @@ Training outputs:
 All automation uses uv:
 
 ```bash
-uv tool run ruff check
-uv tool run ruff format
-uv tool run ty check src
+uv run ruff check
+uv run ruff format
+uv run ty check src
 uv run pytest --cov=src
 ```
 
@@ -117,10 +118,10 @@ The GitHub smoke workflow stages a synthetic FER dataset inside the runner's tem
 4. Populate the scratch directory with a handful of tiny grayscale images per class (one or two is enough).
 5. Execute `uv run python -m src.main --config <scratch>/smoke.json --output-dir runs --seed 0 --experiment-name smoke-local`.
 
-Following these steps mirrors the CI behaviour while ensuring the repository’s `data/` folder—and your real dataset—remain untouched.
+Following these steps mirrors the CI behaviour while ensuring the repository's `data/` folder-and your real dataset-remain untouched.
 
-Ruff enforces a 79-character max line length.
-Run `uv tool run ruff format` before committing to keep the repo consistent.
+Ruff enforces an 80-character max line length (see `pyproject.toml`).
+Run `uv run ruff format` before committing to keep the repo consistent.
 
 These mirror the GitHub Actions workflow located in `.github/workflows/ci.yml`.
 
@@ -129,6 +130,11 @@ These mirror the GitHub Actions workflow located in `.github/workflows/ci.yml`.
 ## Project Structure
 
 ```
+configs/
+  example.json    # Baseline configuration referenced in the README
+  smoke.json      # CI smoke-test configuration (patch its paths before use)
+scripts/
+  run_tests.py    # Convenience entry point for pytest/coverage
 src/
   data.py      # Data loading/augmentation utilities
   model.py     # ResNet architectures and helpers
@@ -139,7 +145,6 @@ tests/
   test_model.py
   test_train.py
   test_main.py
-planning.md     # High-level roadmap & completed tasks
 ```
 
 ---
