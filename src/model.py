@@ -12,6 +12,8 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 from flax import nnx
 
+from src import checkpointing
+
 PyTree = Union[jax.Array, jnp.ndarray, Mapping[str, "PyTree"], Sequence["PyTree"]]
 BoolTree = Union[bool, Mapping[str, "BoolTree"], Sequence["BoolTree"]]
 
@@ -53,7 +55,6 @@ class ResNetConfig:
 
 def resnet_config(depth: int, **overrides: object) -> ResNetConfig:
     """Construct a ``ResNetConfig`` for a canonical depth."""
-
     presets: dict[int, Tuple[Tuple[int, ...], str]] = {
         18: ((2, 2, 2, 2), "basic"),
         34: ((3, 4, 6, 3), "basic"),
@@ -87,6 +88,7 @@ class ResidualBlock(nnx.Module):
         use_projection: bool = False,
         rngs: nnx.Rngs,
     ) -> None:
+        """Initialize metadata shared across child blocks."""
         self.in_features = in_features
         self.features = features
         self.strides = strides
@@ -111,6 +113,7 @@ class BasicBlock(ResidualBlock):
         use_projection: bool = False,
         rngs: nnx.Rngs,
     ) -> None:
+        """Initialize the basic residual block layers."""
         super().__init__(
             in_features,
             features,
@@ -178,6 +181,7 @@ class BasicBlock(ResidualBlock):
             self.proj_bn = None
 
     def __call__(self, x: jax.Array) -> jax.Array:
+        """Apply the block to an input tensor."""
         residual = x
         y = self.conv1(x)
         y = self.bn1(y)
@@ -212,6 +216,7 @@ class BottleneckBlock(ResidualBlock):
         use_projection: bool = False,
         rngs: nnx.Rngs,
     ) -> None:
+        """Initialize the bottleneck residual block."""
         super().__init__(
             in_features,
             features,
@@ -296,6 +301,7 @@ class BottleneckBlock(ResidualBlock):
             self.proj_bn = None
 
     def __call__(self, x: jax.Array) -> jax.Array:
+        """Apply the block to an input tensor."""
         residual = x
         y = self.conv1(x)
         y = self.bn1(y)
@@ -331,6 +337,7 @@ class ResNet(nnx.Module):
         dtype: jnp.dtype = jnp.float32,
         rngs: nnx.Rngs,
     ) -> None:
+        """Initialize the ResNet modules."""
         self.config = config
         self.include_top = include_top
         self.dropout_rate = dropout_rate
@@ -425,6 +432,7 @@ class ResNet(nnx.Module):
         train: bool = True,
         return_features: bool = False,
     ) -> jax.Array | Tuple[jax.Array, dict[str, jax.Array]]:
+        """Run a forward pass through the ResNet."""
         if train:
             self.train()
         else:
@@ -479,7 +487,6 @@ def create_resnet(
     dropout_rate: float = 0.0,
 ) -> ResNet:
     """Factory returning a configured ResNet model."""
-
     blocks_per_stage = {
         18: (2, 2, 2, 2),
         34: (3, 4, 6, 3),
@@ -526,7 +533,6 @@ def build_finetune_mask(
     freeze_classifier: Optional[bool] = None,
 ) -> BoolTree:
     """Return a boolean mask marking which parameters remain trainable."""
-
     if freeze_classifier is None:
         freeze_classifier = config.freeze_classifier
 
@@ -556,10 +562,35 @@ def build_finetune_mask(
     return jtu.tree_unflatten(treedef, mask_leaves)
 
 
-def maybe_load_pretrained_params(*args, **kwargs) -> None:
-    """Placeholder until Agent 3 wires Orbax checkpoint loading for NNX."""
+def maybe_load_pretrained_params(
+    model: ResNet,
+    *,
+    checkpoint_path: Optional[Path],
+) -> bool:
+    """Load a checkpoint into ``model`` when ``checkpoint_path`` is provided.
 
-    raise NotImplementedError(
-        "NNX migration replaces FrozenDict checkpoints; use the forthcoming "
-        "Agent 3 checkpoint utilities instead."
-    )
+    Args:
+        model: ResNet instance whose state should be updated.
+        checkpoint_path: Directory containing an Orbax checkpoint. When
+            ``None`` no action is taken.
+
+    Returns:
+        bool: ``True`` if a checkpoint was loaded, ``False`` when skipped.
+
+    Raises:
+        FileNotFoundError: If ``checkpoint_path`` does not exist.
+        ValueError: When the checkpoint payload does not include ``"model"``.
+    """
+    if checkpoint_path is None:
+        return False
+    resolved = Path(checkpoint_path)
+    if not resolved.exists():
+        raise FileNotFoundError(f"Checkpoint path not found: {resolved}")
+    template = {"model": checkpointing.nnx_state(model)}
+    restored = checkpointing.restore_payload(resolved, template=template)
+    if restored is None or "model" not in restored:
+        raise ValueError(
+            f"Checkpoint at {resolved} does not contain a 'model' entry."
+        )
+    checkpointing.apply_nnx_state(model, restored["model"])
+    return True

@@ -470,6 +470,7 @@ def test_main_entrypoint_executes(
 
 
 def test_resolve_configs_handles_non_mapping_data(tmp_path: Path) -> None:
+    """Non-mapping data entries should be left untouched."""
     config_path = tmp_path / "config.toml"
     config_path.write_text("[training]\ndata = []\n")
     output_dir = tmp_path / "runs"
@@ -489,6 +490,7 @@ def test_resolve_configs_handles_non_mapping_data(tmp_path: Path) -> None:
 
 
 def test_summarize_with_missing_metrics() -> None:
+    """Summaries should handle missing metrics gracefully."""
     summary = main.summarize(
         {
             "train_loss": None,

@@ -113,14 +113,30 @@ def convert_stringified_int_keys(tree: PyTree) -> PyTree:
     return tree
 
 
-def nnx_state(module: nnx.Module) -> PyTree:
-    """Return the serialized state for an ``nnx.Module``."""
-    return nnx.state(module)
+def _state_to_pure_dict(state: nnx.State) -> dict[str, Any]:
+    """Convert an ``nnx.State`` into a serialization-friendly mapping."""
+    return state.to_pure_dict()
+
+
+def nnx_state(module: nnx.Module | nnx.Optimizer | nnx.Rngs) -> PyTree:
+    """Return the serialized state for an ``nnx`` object."""
+    return _state_to_pure_dict(nnx.state(module))
 
 
 def apply_nnx_state(module: nnx.Module, state: PyTree) -> None:
     """Update an ``nnx.Module`` using a restored checkpoint state."""
-    nnx.update(module, convert_stringified_int_keys(state))
+    pure_dict = convert_stringified_int_keys(state)
+    current_state = nnx.state(module)
+    current_state.replace_by_pure_dict(pure_dict)
+    nnx.update(module, current_state)
+
+
+def apply_nnx_state_to_object(obj: nnx.Optimizer | nnx.Rngs, state: PyTree) -> None:
+    """Update non-module ``nnx`` objects (e.g., optimizers) with new state."""
+    pure_dict = convert_stringified_int_keys(state)
+    current_state = nnx.state(obj)
+    current_state.replace_by_pure_dict(pure_dict)
+    nnx.update(obj, current_state)
 
 
 def _maybe_int_key(key: Any) -> Any:

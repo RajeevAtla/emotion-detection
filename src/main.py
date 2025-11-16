@@ -362,7 +362,6 @@ def to_serializable(obj: object) -> ConfigValue:
 
 def prune_nones(obj: ConfigValue) -> ConfigValue:
     """Recursively remove ``None`` entries from mappings and sequences."""
-
     if obj is None:
         return None
     if isinstance(obj, Mapping):

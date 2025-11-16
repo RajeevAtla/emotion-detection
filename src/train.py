@@ -14,9 +14,6 @@ import metrax as mx
 import optax
 import numpy as np
 from flax import nnx
-from flax.core import FrozenDict, freeze
-from flax.training import train_state
-from flax.training.dynamic_scale import DynamicScale
 from tensorboardX import SummaryWriter
 
 from src import checkpointing
@@ -25,26 +22,17 @@ from src.model import (
     ResNet,
     build_finetune_mask,
     create_resnet,
+    maybe_load_pretrained_params,
 )
 
-ArrayLike: TypeAlias = Union[jax.Array, jnp.ndarray]
-ArrayTree: TypeAlias = Union[
-    ArrayLike, Mapping[str, "ArrayTree"], Sequence["ArrayTree"]
-]
-BoolTree: TypeAlias = Union[bool, Mapping[str, "BoolTree"]]
+BoolTree: TypeAlias = Union[bool, Mapping[str, "BoolTree"], Sequence["BoolTree"]]
 TrainBatch = Tuple[jnp.ndarray, jnp.ndarray]
 TrainStepFn = Callable[
-    ["TrainState", TrainBatch, jax.Array],
+    ["TrainState", TrainBatch],
     Tuple["TrainState", dict[str, jnp.ndarray]],
 ]
 EvalStepFn = Callable[
     ["TrainState", TrainBatch], Tuple[dict[str, jnp.ndarray], jnp.ndarray]
-]
-NNXTrainStepFn = Callable[
-    ["NNXTrainState", TrainBatch], Tuple["NNXTrainState", dict[str, jnp.ndarray]]
-]
-NNXEvalStepFn = Callable[
-    ["NNXTrainState", TrainBatch], Tuple[dict[str, jnp.ndarray], jnp.ndarray]
 ]
 
 
@@ -57,34 +45,7 @@ TrainingSummary = dict[str, Union[float, int, None, str, TrainingHistory]]
 
 @dataclass
 class TrainingConfig:
-    """Collection of knobs driving the training loop.
-
-    Attributes:
-        data: Data module configuration describing dataset handling.
-        output_dir: Directory for checkpoints, logs, and metrics.
-        model_depth: ResNet depth to instantiate.
-        width_multiplier: Width multiplier applied to stage channels.
-        dropout_rate: Dropout probability applied before classification.
-        num_epochs: Number of training epochs.
-        batch_size: Number of samples per batch.
-        learning_rate: Peak learning rate used after warmup.
-        min_learning_rate: Minimum learning rate reached after decay.
-        warmup_epochs: Count of epochs used for linear warmup.
-        weight_decay: Weight decay applied by the optimizer.
-        gradient_accumulation_steps: Gradient accumulation factor.
-        label_smoothing: Label smoothing factor for cross entropy.
-        seed: Global PRNG seed.
-        log_every: Training-step logging interval.
-        checkpoint_every: Epoch interval for writing checkpoints.
-        max_checkpoints: Maximum number of checkpoints to retain.
-        use_mixed_precision: Whether to enable mixed precision training.
-        patience: Optional early-stopping patience in epochs.
-        freeze_stem: Whether to freeze stem parameters.
-        freeze_classifier: Whether to freeze classifier parameters.
-        frozen_stages: Tuple of stage indices to freeze.
-        pretrained_checkpoint: Optional checkpoint path for initialization.
-        resume_checkpoint: Optional checkpoint path to resume training.
-    """
+    """Collection of knobs driving the training loop."""
 
     data: DataModuleConfig
     output_dir: Path
@@ -121,19 +82,13 @@ class TrainingConfig:
             self.resume_checkpoint = Path(self.resume_checkpoint)
 
 
-class TrainState(train_state.TrainState):
-    """TrainState with batch statistics and optional dynamic loss scaling."""
-
-    batch_stats: FrozenDict[str, ArrayTree]
-    dynamic_scale: Optional[DynamicScale] = None
-
-
 @dataclass
-class NNXTrainState:
+class TrainState:
     """Container describing the mutable pieces of training."""
 
     model: ResNet
-    optimizer: nnx.Optimizer
+    tx: optax.GradientTransformation
+    opt_state: optax.OptState
     rngs: nnx.Rngs
     dynamic_scale: Optional[object] = None
 
@@ -231,17 +186,21 @@ def initialize_nnx_model(
         freeze_classifier=config.freeze_classifier,
         dropout_rate=config.dropout_rate,
     )
+    maybe_load_pretrained_params(
+        model,
+        checkpoint_path=config.pretrained_checkpoint,
+    )
     return model, rngs
 
 
-def create_nnx_train_state(
+def create_train_state(
     model: ResNet,
     config: TrainingConfig,
     lr_schedule: optax.Schedule,
     *,
     rngs: Optional[nnx.Rngs] = None,
-) -> NNXTrainState:
-    """Return an ``NNXTrainState`` ready for the new training loop."""
+) -> TrainState:
+    """Return a populated ``TrainState`` ready for the training loop."""
     base_rngs = rngs or nnx.Rngs(config.seed)
     params_tree = nnx.to_pure_dict(nnx.state(model, nnx.Param))
 
@@ -258,76 +217,15 @@ def create_nnx_train_state(
         )
         mask_tree = mask_tree_result
 
-    optimizer = nnx.Optimizer(
-        model,
-        create_optimizer(config, lr_schedule, mask_tree),
-        wrt=nnx.Param,
-    )
-    return NNXTrainState(
+    optimizer = create_optimizer(config, lr_schedule, mask_tree)
+    opt_state = optimizer.init(params_tree)
+    return TrainState(
         model=model,
-        optimizer=optimizer,
+        tx=optimizer,
+        opt_state=opt_state,
         rngs=base_rngs,
         dynamic_scale=None,
     )
-
-
-def create_train_state(
-    rng: jax.Array,
-    model: ResNet,
-    config: TrainingConfig,
-    lr_schedule: optax.Schedule,
-) -> TrainState:
-    """Initialize model parameters and optimizer state.
-
-    Args:
-        rng: PRNG key used for parameter initialization.
-        model: ResNet module to initialize.
-        config: Training configuration controlling optimizer behavior.
-        lr_schedule: Learning rate schedule used by the optimizer.
-
-    Returns:
-        TrainState: Populated training state ready for training.
-    """
-    example = jnp.zeros(
-        (1, 48, 48, model.config.input_channels), dtype=jnp.float32
-    )
-    variables = model.init(rng, example, train=True)
-    params = variables["params"]
-    batch_stats = variables.get("batch_stats", freeze({}))
-
-    if config.pretrained_checkpoint is not None:
-        params = maybe_load_pretrained_params(
-            params,
-            config=replace(
-                model.config,
-                checkpoint_path=config.pretrained_checkpoint,
-            ),
-        )
-
-    mask_tree: Optional[FrozenDict[str, BoolTree]] = None
-    if config.freeze_stem or config.freeze_classifier or config.frozen_stages:
-        mask_tree_result = build_finetune_mask(
-            {"params": params},
-            config=replace(
-                model.config,
-                freeze_stem=config.freeze_stem,
-                freeze_classifier=config.freeze_classifier,
-                frozen_stages=config.frozen_stages,
-            ),
-        )
-        mask_tree = cast(FrozenDict[str, BoolTree], mask_tree_result["params"])
-
-    optimizer = create_optimizer(config, lr_schedule, mask_tree)
-    dynamic_scale = DynamicScale() if config.use_mixed_precision else None
-
-    return TrainState.create(
-        apply_fn=model.apply,
-        params=params,
-        tx=optimizer,
-        batch_stats=batch_stats,
-        dynamic_scale=dynamic_scale,
-    )
-
 
 def cross_entropy_loss(
     logits: jnp.ndarray,
@@ -444,216 +342,104 @@ def compute_f1_metrics(cm: np.ndarray) -> tuple[float, float, list[float]]:
     return micro_f1, macro_f1, per_class_scores.tolist()
 
 
+
+
 def build_train_step(
-    model: ResNet,
     config: TrainingConfig,
+    *,
     class_weights: Optional[jnp.ndarray],
 ) -> TrainStepFn:
-    """Create a jit-compiled training step function."""
+    """Create the stateful training function for NNX models."""
 
-    def loss_fn(
-        params: FrozenDict[str, ArrayTree],
-        batch_stats: FrozenDict[str, ArrayTree],
-        images: jnp.ndarray,
-        labels: jnp.ndarray,
-        rng: jax.Array,
-    ) -> tuple[
-        jnp.ndarray, tuple[dict[str, jnp.ndarray], Mapping[str, ArrayTree]]
-    ]:
-        variables = {"params": params, "batch_stats": batch_stats}
-        logits, new_model_state = model.apply(
-            variables,
-            images,
-            train=True,
-            mutable=["batch_stats"],
-            rngs={"dropout": rng},
-        )
-        logits = cast(jnp.ndarray, logits)
+    def loss_with_metrics(
+        model: ResNet, images: jnp.ndarray, labels: jnp.ndarray
+    ) -> tuple[jnp.ndarray, dict[str, jnp.ndarray]]:
+        model.train()
+        logits = cast(jnp.ndarray, model(images))
         loss = cross_entropy_loss(
             logits,
             labels,
             label_smoothing=config.label_smoothing,
             class_weights=class_weights,
         )
+        preds = jnp.argmax(logits, axis=-1)
         accuracy = mx.Accuracy.from_model_output(
-            predictions=jnp.argmax(logits, axis=-1),
+            predictions=preds,
             labels=labels,
         ).compute()
-        metrics: dict[str, jnp.ndarray] = {
+        metrics = {
             "loss": loss,
             "accuracy": accuracy,
         }
-        return loss, (metrics, cast(Mapping[str, ArrayTree], new_model_state))
+        return loss, metrics
+
+    grad_fn = nnx.value_and_grad(
+        loss_with_metrics,
+        argnums=nnx.DiffState(0, nnx.Param),
+        has_aux=True,
+    )
 
     def train_step(
-        state: TrainState, batch: TrainBatch, rng: jax.Array
+        state: TrainState, batch: TrainBatch
     ) -> Tuple[TrainState, dict[str, jnp.ndarray]]:
-        """Execute one optimizer update using the provided batch."""
         images, labels = batch
-        if config.use_mixed_precision:
-            images = images.astype(jnp.float16)
-        else:
-            images = images.astype(jnp.float32)
-
-        if config.use_mixed_precision and state.dynamic_scale is not None:
-            dynamic_scale = state.dynamic_scale
-
-            def scaled_loss_fn(params: FrozenDict[str, ArrayTree]):
-                loss, (metrics, new_model_state) = loss_fn(
-                    params, state.batch_stats, images, labels, rng
-                )
-                return loss, (metrics, new_model_state)
-
-            grad_fn = dynamic_scale.value_and_grad(scaled_loss_fn, has_aux=True)
-            result = grad_fn(state.params)
-            if isinstance(result, tuple) and len(result) == 4:
-                (
-                    new_dynamic_scale,
-                    is_finite,
-                    (_, (metrics, new_model_state)),
-                    grads,
-                ) = result
-            else:
-                (_, (metrics, new_model_state)), grads = cast(
-                    tuple[
-                        tuple[
-                            jnp.ndarray,
-                            tuple[
-                                dict[str, jnp.ndarray], Mapping[str, ArrayTree]
-                            ],
-                        ],
-                        ArrayTree,
-                    ],
-                    result,
-                )
-                new_dynamic_scale = dynamic_scale
-                is_finite = jnp.array(True, dtype=jnp.bool_)
-            loss_scale = getattr(
-                new_dynamic_scale, "loss_scale", jnp.array(1.0)
-            )
-            grads = jax.tree_util.tree_map(
-                lambda g: jnp.where(is_finite, g / loss_scale, g), grads
-            )
-            state = state.apply_gradients(
-                grads=grads,
-                batch_stats=new_model_state["batch_stats"],
-            )
-            state = state.replace(dynamic_scale=new_dynamic_scale)
-            return state, metrics
-
-        grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
-        (loss, (metrics, new_model_state)), grads = grad_fn(
-            state.params,
-            state.batch_stats,
-            images,
-            labels,
-            rng,
+        images = _cast_precision(
+            images, use_mixed_precision=config.use_mixed_precision
         )
-        state = state.apply_gradients(
-            grads=grads,
-            batch_stats=new_model_state["batch_stats"],
+        (_, metrics), grads = grad_fn(state.model, images, labels)
+        params_tree = nnx.to_pure_dict(nnx.state(state.model, nnx.Param))
+        grads_tree = nnx.to_pure_dict(nnx.state(grads, nnx.Param))
+        updates, new_opt_state = state.tx.update(
+            grads_tree, state.opt_state, params_tree
         )
+        new_params = optax.apply_updates(params_tree, updates)
+        nnx.update(state.model, new_params)
+        state.opt_state = new_opt_state
         return state, metrics
 
-    return jax.jit(train_step)
+    return train_step
 
 
-def build_eval_step(model: ResNet, config: TrainingConfig) -> EvalStepFn:
-    """Create a JIT-compiled evaluation function."""
+def build_eval_step(config: TrainingConfig) -> EvalStepFn:
+    """Create the evaluation step for NNX models."""
 
     def eval_step(
         state: TrainState, batch: TrainBatch
     ) -> Tuple[dict[str, jnp.ndarray], jnp.ndarray]:
-        """Evaluate a batch and return metrics and predictions."""
         images, labels = batch
-        if config.use_mixed_precision:
-            images = images.astype(jnp.float16)
-        else:
-            images = images.astype(jnp.float32)
-        variables = {"params": state.params, "batch_stats": state.batch_stats}
-        logits = cast(
-            jnp.ndarray,
-            model.apply(variables, images, train=False, mutable=False),
+        images = _cast_precision(
+            images, use_mixed_precision=config.use_mixed_precision
         )
+        state.model.eval()
+        logits = cast(jnp.ndarray, state.model(images))
         loss = cross_entropy_loss(
             logits,
             labels,
             label_smoothing=config.label_smoothing,
         )
         preds = jnp.argmax(logits, axis=-1)
-        metrics: dict[str, jnp.ndarray] = {
+        accuracy = mx.Accuracy.from_model_output(
+            predictions=preds,
+            labels=labels,
+        ).compute()
+        state.model.train()
+        metrics = {
             "loss": loss,
-            "accuracy": mx.Accuracy.from_model_output(
-                predictions=preds,
-                labels=labels,
-            ).compute(),
+            "accuracy": accuracy,
         }
         return metrics, preds
 
-    return jax.jit(eval_step)
-
-
-def build_nnx_train_step(
-    config: TrainingConfig,
-    *,
-    class_weights: Optional[jnp.ndarray],
-) -> NNXTrainStepFn:
-    """Placeholder for the NNX training step (implemented in Step 3)."""
-
-    def _unimplemented(
-        state: NNXTrainState, batch: TrainBatch
-    ) -> Tuple[NNXTrainState, dict[str, jnp.ndarray]]:
-        raise NotImplementedError(
-            "NNX train step not implemented yet; see Agent 2 Step 3."
-        )
-
-    return _unimplemented
-
-
-def build_nnx_eval_step(config: TrainingConfig) -> NNXEvalStepFn:
-    """Placeholder for the NNX evaluation step (implemented in Step 3)."""
-
-    def _unimplemented(
-        state: NNXTrainState, batch: TrainBatch
-    ) -> Tuple[dict[str, jnp.ndarray], jnp.ndarray]:
-        raise NotImplementedError(
-            "NNX eval step not implemented yet; see Agent 2 Step 3."
-        )
-
-    return _unimplemented
+    return eval_step
 
 
 def save_checkpoint(
     state: TrainState, config: TrainingConfig, epoch: int
-) -> None:
-    """Persist the current training state to disk.
-
-    Args:
-        state: Training state containing parameters and optimizer state.
-        config: Training configuration providing output directory metadata.
-        epoch: Epoch number associated with the checkpoint.
-    """
-    payload = {
-        "params": state.params,
-        "batch_stats": state.batch_stats,
-        "opt_state": state.opt_state,
-        "dynamic_scale": state.dynamic_scale,
-    }
-    layout = checkpointing.CheckpointLayout(
-        directory=config.output_dir / "checkpoints",
-        max_checkpoints=config.max_checkpoints,
-    )
-    checkpointing.save_payload(payload, layout=layout, epoch=epoch)
-
-
-def save_nnx_checkpoint(
-    state: NNXTrainState, config: TrainingConfig, epoch: int
 ) -> Path:
     """Persist an ``NNXTrainState`` to disk."""
     payload = {
         "model": checkpointing.nnx_state(state.model),
-        "optimizer": nnx.state(state.optimizer),
-        "rngs": nnx.state(state.rngs),
+        "opt_state": state.opt_state,
+        "rngs": checkpointing.nnx_state(state.rngs),
         "dynamic_scale": state.dynamic_scale,
     }
     layout = checkpointing.CheckpointLayout(
@@ -665,40 +451,14 @@ def save_nnx_checkpoint(
 
 def maybe_restore_checkpoint(
     config: TrainingConfig, state: TrainState
-) -> Optional[dict[str, ArrayTree]]:
-    """Restore a checkpoint if ``resume_checkpoint`` is specified.
-
-    Args:
-        config: Training configuration referencing an optional checkpoint.
-        state: Current training state providing structure for restoration.
-
-    Returns:
-        Optional[dict[str, ArrayTree]]: Restored checkpoint payload or ``None``.
-    """
-    if config.resume_checkpoint is None:
-        return None
-    template = {
-        "params": state.params,
-        "batch_stats": state.batch_stats,
-        "opt_state": state.opt_state,
-        "dynamic_scale": state.dynamic_scale,
-    }
-    restored = checkpointing.restore_payload(
-        config.resume_checkpoint, template=template
-    )
-    return cast(Optional[dict[str, ArrayTree]], restored)
-
-
-def maybe_restore_nnx_checkpoint(
-    config: TrainingConfig, state: NNXTrainState
-) -> Optional[NNXTrainState]:
+) -> Optional[TrainState]:
     """Restore an NNX checkpoint if ``resume_checkpoint`` is provided."""
     if config.resume_checkpoint is None:
         return None
     template = {
         "model": checkpointing.nnx_state(state.model),
-        "optimizer": nnx.state(state.optimizer),
-        "rngs": nnx.state(state.rngs),
+        "opt_state": state.opt_state,
+        "rngs": checkpointing.nnx_state(state.rngs),
         "dynamic_scale": state.dynamic_scale,
     }
     restored = checkpointing.restore_payload(
@@ -707,53 +467,20 @@ def maybe_restore_nnx_checkpoint(
     if restored is None:
         return None
     model_state = restored.get("model", template["model"])
-    optimizer_state = restored.get("optimizer", template["optimizer"])
+    opt_state = restored.get("opt_state", template["opt_state"])
     rng_state = restored.get("rngs", template["rngs"])
     checkpointing.apply_nnx_state(state.model, model_state)
-    nnx.update(state.optimizer, optimizer_state)
-    nnx.update(state.rngs, rng_state)
+    checkpointing.apply_nnx_state_to_object(state.rngs, rng_state)
     dynamic_scale = restored.get("dynamic_scale", state.dynamic_scale)
-    return replace(state, dynamic_scale=dynamic_scale)
+    return replace(
+        state,
+        opt_state=opt_state,
+        dynamic_scale=dynamic_scale,
+    )
 
 
 def predict_batches(
     state: TrainState,
-    model: ResNet,
-    batches: Iterable[Tuple[jnp.ndarray, jnp.ndarray]],
-    config: TrainingConfig,
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
-    """Generate predictions for an iterator of batches.
-
-    Args:
-        state: Training state containing model parameters.
-        model: ResNet module used for inference.
-        batches: Iterable yielding image and label tensors.
-        config: Training configuration controlling precision.
-
-    Returns:
-        Tuple[jnp.ndarray, jnp.ndarray]: Prediction and label arrays.
-    """
-    preds = []
-    labels_list = []
-    for images, labels in batches:
-        if config.use_mixed_precision:
-            images = images.astype(jnp.float16)
-        else:
-            images = images.astype(jnp.float32)
-        variables = {"params": state.params, "batch_stats": state.batch_stats}
-        logits = cast(
-            jnp.ndarray,
-            model.apply(variables, images, train=False, mutable=False),
-        )
-        preds.append(jnp.argmax(logits, axis=-1))
-        labels_list.append(labels)
-    if not preds:
-        return jnp.array([], dtype=jnp.int32), jnp.array([], dtype=jnp.int32)
-    return jnp.concatenate(preds, axis=0), jnp.concatenate(labels_list, axis=0)
-
-
-def predict_batches_nnx(
-    state: NNXTrainState,
     batches: Iterable[Tuple[jnp.ndarray, jnp.ndarray]],
     config: TrainingConfig,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -776,263 +503,7 @@ def predict_batches_nnx(
 
 
 def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
-    """Run the full training, validation, and test evaluation pipeline.
-
-    Args:
-        config: Training configuration describing the experiment.
-
-    Returns:
-        TrainingSummary: Metrics summarizing the training run.
-    """
-
-    rng = jax.random.PRNGKey(config.seed)
-
-    data_config = replace(config.data)
-    data_module = EmotionDataModule(data_config)
-    data_module.setup()
-    class_weights = data_module.class_weights
-    train_counts = data_module.split_counts()["train"]
-    num_train_examples = sum(train_counts.values())
-    steps_per_epoch = max(1, num_train_examples // config.batch_size)
-    train_schedule = create_learning_rate_schedule(config, steps_per_epoch)
-
-    model = create_resnet(
-        depth=config.model_depth,
-        num_classes=len(train_counts),
-        width_multiplier=config.width_multiplier,
-        include_top=True,
-        input_projection_channels=None,
-        dropout_rate=config.dropout_rate,
-    )
-
-    state = create_train_state(rng, model, config, train_schedule)
-    restored_state = maybe_restore_checkpoint(config, state)
-    if restored_state is not None:
-        state = state.replace(
-            params=restored_state["params"],
-            batch_stats=restored_state.get("batch_stats", state.batch_stats),
-            opt_state=restored_state.get("opt_state", state.opt_state),
-            dynamic_scale=restored_state.get(
-                "dynamic_scale", state.dynamic_scale
-            ),
-        )
-    train_step = build_train_step(model, config, class_weights=class_weights)
-    eval_step = build_eval_step(model, config)
-
-    writer = SummaryWriter(log_dir=str(config.output_dir / "tensorboard"))
-    best_val_loss = jnp.inf
-    history: TrainingHistory = {
-        "train_loss": [],
-        "train_accuracy": [],
-        "val_loss": [],
-        "val_accuracy": [],
-        "val_f1": [],
-        "val_macro_f1": [],
-    }
-
-    epochs_without_improvement = 0
-    best_checkpoint_dir: Optional[Path] = None
-    best_epoch: Optional[int] = None
-    for epoch in range(1, config.num_epochs + 1):
-        epoch_rng, rng = jax.random.split(rng)
-        epoch_seed = int(jax.random.randint(epoch_rng, (), 0, 2**31 - 1))
-        train_iter = data_module.train_batches(
-            rng_seed=epoch_seed,
-            batch_size=config.batch_size,
-        )
-        train_metrics = []
-
-        for step, (images, labels) in enumerate(train_iter, start=1):
-            state, metrics = train_step(
-                state,
-                (images, labels),
-                jax.random.fold_in(epoch_rng, step),
-            )
-            train_metrics.append(metrics)
-            if step % config.log_every == 0:
-                global_step = (epoch - 1) * steps_per_epoch + step
-                writer.add_scalars(
-                    "train_step",
-                    {
-                        "loss": float(metrics["loss"]),
-                        "accuracy": float(metrics["accuracy"]),
-                    },
-                    global_step=global_step,
-                )
-
-        if train_metrics:
-            epoch_train_loss = float(
-                jnp.mean(jnp.asarray([m["loss"] for m in train_metrics]))
-            )
-            epoch_train_acc = float(
-                jnp.mean(jnp.asarray([m["accuracy"] for m in train_metrics]))
-            )
-        else:
-            epoch_train_loss = float("nan")
-            epoch_train_acc = float("nan")
-
-        val_metrics = []
-        val_preds_list = []
-        val_labels_list = []
-        for images, labels in data_module.val_batches(
-            batch_size=config.batch_size
-        ):
-            metrics_dict, preds = eval_step(state, (images, labels))
-            val_metrics.append(metrics_dict)
-            val_preds_list.append(preds)
-            val_labels_list.append(labels)
-        if val_metrics:
-            epoch_val_loss = float(
-                jnp.mean(jnp.asarray([m["loss"] for m in val_metrics]))
-            )
-            epoch_val_acc = float(
-                jnp.mean(jnp.asarray([m["accuracy"] for m in val_metrics]))
-            )
-        else:
-            epoch_val_loss = float("nan")
-            epoch_val_acc = float("nan")
-
-        val_f1 = float("nan")
-        val_macro_f1 = float("nan")
-        per_class_f1: list[float] = []
-        if val_preds_list:
-            val_preds = jnp.concatenate(val_preds_list, axis=0)
-            val_labels = jnp.concatenate(val_labels_list, axis=0)
-            cm = compute_confusion_matrix(
-                preds=val_preds,
-                labels=val_labels,
-                num_classes=len(train_counts),
-            )
-            val_f1, val_macro_f1, per_class_f1 = compute_f1_metrics(cm)
-            class_names = list(train_counts.keys())
-            writer.add_text(
-                "epoch/confusion_matrix",
-                format_confusion_matrix(cm, class_names),
-                global_step=epoch,
-            )
-            per_class_line = ", ".join(
-                f"{name}: "
-                f"{'nan' if math.isnan(float(score)) else f'{float(score):.4f}'}"
-                for name, score in zip(class_names, per_class_f1)
-            )
-            if per_class_line:
-                writer.add_text(
-                    "epoch/val_per_class_f1",
-                    per_class_line,
-                    global_step=epoch,
-                )
-
-        writer.add_scalars(
-            "epoch",
-            {
-                "train_loss": epoch_train_loss,
-                "train_accuracy": epoch_train_acc,
-                "val_loss": epoch_val_loss,
-                "val_accuracy": epoch_val_acc,
-                "val_f1": val_f1,
-                "val_macro_f1": val_macro_f1,
-            },
-            global_step=epoch,
-        )
-
-        history["train_loss"].append(epoch_train_loss)
-        history["train_accuracy"].append(epoch_train_acc)
-        history["val_loss"].append(epoch_val_loss)
-        history["val_accuracy"].append(epoch_val_acc)
-        history["val_f1"].append(val_f1)
-        history["val_macro_f1"].append(val_macro_f1)
-
-        improved = (
-            not math.isnan(epoch_val_loss) and epoch_val_loss < best_val_loss
-        )
-        if improved:
-            best_val_loss = epoch_val_loss
-            epochs_without_improvement = 0
-            best_checkpoint_dir = (
-                config.output_dir / "checkpoints" / f"epoch_{epoch:04d}"
-            )
-            best_epoch = epoch
-        else:
-            epochs_without_improvement += 1
-
-        if epoch % config.checkpoint_every == 0 or improved:
-            save_checkpoint(state, config, epoch)
-
-        if (
-            config.patience is not None
-            and epochs_without_improvement >= config.patience
-        ):
-            break
-
-    if best_checkpoint_dir is not None and best_checkpoint_dir.exists():
-        template = {
-            "params": state.params,
-            "batch_stats": state.batch_stats,
-            "opt_state": state.opt_state,
-            "dynamic_scale": state.dynamic_scale,
-        }
-        restored_best = checkpointing.restore_payload(
-            best_checkpoint_dir, template=template
-        )
-        if restored_best is not None:
-            restored_mapping = cast(Mapping[str, ArrayTree], restored_best)
-            state = state.replace(
-                params=restored_mapping["params"],
-                batch_stats=restored_mapping.get(
-                    "batch_stats", state.batch_stats
-                ),
-                opt_state=restored_mapping.get("opt_state", state.opt_state),
-                dynamic_scale=restored_mapping.get(
-                    "dynamic_scale", state.dynamic_scale
-                ),
-            )
-
-    test_predictions, test_labels = predict_batches(
-        state,
-        model,
-        data_module.test_batches(batch_size=config.batch_size),
-        config,
-    )
-    test_accuracy = None
-    test_f1: Optional[float] = None
-    test_macro_f1: Optional[float] = None
-    if test_predictions.size > 0:
-        test_metric = mx.Accuracy.from_model_output(
-            predictions=test_predictions,
-            labels=test_labels,
-        )
-        test_accuracy = float(test_metric.compute())
-        test_cm = compute_confusion_matrix(
-            preds=test_predictions,
-            labels=test_labels,
-            num_classes=len(train_counts),
-        )
-        micro, macro, _ = compute_f1_metrics(test_cm)
-        test_f1 = micro
-        test_macro_f1 = macro
-
-    writer.close()
-    return {
-        "train_loss": history["train_loss"][-1],
-        "train_accuracy": history["train_accuracy"][-1],
-        "val_loss": history["val_loss"][-1],
-        "val_accuracy": history["val_accuracy"][-1],
-        "val_f1": history["val_f1"][-1],
-        "val_macro_f1": history["val_macro_f1"][-1],
-        "test_accuracy": test_accuracy,
-        "test_f1": test_f1,
-        "test_macro_f1": test_macro_f1,
-        "best_checkpoint": str(best_checkpoint_dir)
-        if best_checkpoint_dir is not None
-        else None,
-        "best_epoch": best_epoch if best_epoch is not None else None,
-        "history": history,
-    }
-
-
-def train_and_evaluate_nnx(config: TrainingConfig) -> TrainingSummary:
     """Run the training pipeline using the NNX-native state."""
-
     rng = jax.random.PRNGKey(config.seed)
     data_config = replace(config.data)
     data_module = EmotionDataModule(data_config)
@@ -1048,18 +519,18 @@ def train_and_evaluate_nnx(config: TrainingConfig) -> TrainingSummary:
         num_classes=len(train_counts),
         include_top=True,
     )
-    state = create_nnx_train_state(
+    state = create_train_state(
         model, config, train_schedule, rngs=rngs
     )
-    restored_state = maybe_restore_nnx_checkpoint(config, state)
+    restored_state = maybe_restore_checkpoint(config, state)
     if restored_state is not None:
         state = restored_state
 
-    train_step = build_nnx_train_step(
+    train_step = build_train_step(
         config,
         class_weights=class_weights,
     )
-    eval_step = build_nnx_eval_step(config)
+    eval_step = build_eval_step(config)
 
     writer = SummaryWriter(log_dir=str(config.output_dir / "tensorboard"))
     best_val_loss = jnp.inf
@@ -1186,12 +657,12 @@ def train_and_evaluate_nnx(config: TrainingConfig) -> TrainingSummary:
         if improved:
             best_val_loss = epoch_val_loss
             epochs_without_improvement = 0
-            best_checkpoint_path = save_nnx_checkpoint(state, config, epoch)
+            best_checkpoint_path = save_checkpoint(state, config, epoch)
             best_epoch = epoch
         else:
             epochs_without_improvement += 1
             if epoch % config.checkpoint_every == 0:
-                save_nnx_checkpoint(state, config, epoch)
+                save_checkpoint(state, config, epoch)
 
         if (
             config.patience is not None
@@ -1202,7 +673,7 @@ def train_and_evaluate_nnx(config: TrainingConfig) -> TrainingSummary:
     if best_checkpoint_path is not None and best_checkpoint_path.exists():
         template = {
             "model": checkpointing.nnx_state(state.model),
-            "optimizer": nnx.state(state.optimizer),
+            "opt_state": state.opt_state,
             "rngs": nnx.state(state.rngs),
             "dynamic_scale": state.dynamic_scale,
         }
@@ -1214,20 +685,17 @@ def train_and_evaluate_nnx(config: TrainingConfig) -> TrainingSummary:
                 state.model, restored_best.get("model", template["model"])
             )
             nnx.update(
-                state.optimizer,
-                restored_best.get("optimizer", template["optimizer"]),
-            )
-            nnx.update(
                 state.rngs, restored_best.get("rngs", template["rngs"])
             )
             state = replace(
                 state,
+                opt_state=restored_best.get("opt_state", state.opt_state),
                 dynamic_scale=restored_best.get(
                     "dynamic_scale", state.dynamic_scale
                 ),
             )
 
-    test_predictions, test_labels = predict_batches_nnx(
+    test_predictions, test_labels = predict_batches(
         state,
         data_module.test_batches(batch_size=config.batch_size),
         config,
