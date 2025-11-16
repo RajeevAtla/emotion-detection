@@ -10,6 +10,10 @@ on:
 jobs:
   smoke-run:
     runs-on: ubuntu-latest
+    env:
+      FORCE_COLOR: "1"
+      GITHUB_ACTIONS: "true"
+      CLICOLOR_FORCE: "1"
 
     steps:
       - name: Check out repository
