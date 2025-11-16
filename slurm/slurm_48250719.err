@@ -1,0 +1,35 @@
+[34mINFO:   [0m Converting OCI blobs to SIF format
+[34mINFO:   [0m Starting build...
+Getting image source signatures
+Skipping fetch of repeat blob sha256:8f7c85c2269abaeba55439fe3a7e8935386d45a88da6166231fc947133c592a8
+Skipping fetch of repeat blob sha256:9e72e494a6dd79fa00aaf2921eb571801c5ce9aee021bf5353f91f859aeee92f
+Skipping fetch of repeat blob sha256:3009ec50c8871f7a3f19c248194270a1a3aa28705934d619acbd96c663ce5c89
+Skipping fetch of repeat blob sha256:9d5ffccbec91702aeb063cb2f3987ca3661bd53dc9e4d8446261fe1c5b05de64
+Skipping fetch of repeat blob sha256:e872a2642ce1d63f3283e81bb6503579808c01e2bf63412ef87135ecb0f04746
+Skipping fetch of repeat blob sha256:b3706ae11336f33f349bbbd270c3974f85aefd3869af5719c8c22d48c3c84f4c
+Skipping fetch of repeat blob sha256:c5f395193ddab23ed3d0d49e6747714da512a0c16e1e36c5216d2f6a667eaff5
+Skipping fetch of repeat blob sha256:85781739724adab1c3678d22b163183c34190420a36c2fa69d9ad720c1666007
+Skipping fetch of repeat blob sha256:62a9aed1a99ffc1a67ef1e7d5a397cdbc749fa2177846abc90670514c513093c
+Skipping fetch of repeat blob sha256:c43d1adb681dda90172bc2f73ebaf6508cfefab6238bb4b7f90eaedadfd4a679
+Skipping fetch of repeat blob sha256:5c7870e1fb956cfc02eecbe0e158cfb1cd1a70e7a671abc8933ff9bdfebd8940
+Skipping fetch of repeat blob sha256:662ffafd36ab01963a7ae726249b1245ec177e1ac8179f8d04d0e1be2282e635
+Skipping fetch of repeat blob sha256:085eb96e65103e3ce95b85c6015ab7370e9a76bccb0a3ed4ca7a815cf3a6fa5e
+Copying blob sha256:7e6fe90ecfae4e01cdda94fefab13f77cc231788e46e819d359a4309f96b72e1
+ 0 B / 150.74 MiB  10.41 MiB / 150.74 MiB  27.54 MiB / 150.74 MiB  44.88 MiB / 150.74 MiB  62.31 MiB / 150.74 MiB  70.81 MiB / 150.74 MiB  84.39 MiB / 150.74 MiB  103.75 MiB / 150.74 MiB  115.71 MiB / 150.74 MiB  134.98 MiB / 150.74 MiB  150.74 MiB / 150.74 MiB  150.74 MiB / 150.74 MiB  2s
+Copying blob sha256:fe86579f968a943b815f146ab45a5340446117a8fb58e4d21d2164f84e625275
+ 0 B / 64.06 MiB  7.07 MiB / 64.06 MiB  15.75 MiB / 64.06 MiB  25.15 MiB / 64.06 MiB  36.95 MiB / 64.06 MiB  44.11 MiB / 64.06 MiB  54.38 MiB / 64.06 MiB  63.19 MiB / 64.06 MiB  64.06 MiB / 64.06 MiB  1s
+Copying blob sha256:5b637d5155797ea5526e499b6a20ad1f86db1048b2e99a9bf24e7c5568bec3ab
+ 0 B / 75.37 MiB  10.25 MiB / 75.37 MiB  22.55 MiB / 75.37 MiB  37.34 MiB / 75.37 MiB  44.84 MiB / 75.37 MiB  56.54 MiB / 75.37 MiB  69.88 MiB / 75.37 MiB  75.37 MiB / 75.37 MiB  1s
+Copying blob sha256:7f3d33e42bd867e08056bfaa882fbccdb84ca674a3cb9e9ca3f0ec859a39f0d3
+ 0 B / 752 B  752 B / 752 B  0s
+Copying blob sha256:59dcc2763c8ee16d004cbe949c1fedd82e3c4c33cd5e9dcf60bf23263cc71d5c
+ 0 B / 221.07 KiB  221.07 KiB / 221.07 KiB  0s
+Copying blob sha256:614c498829deee65ff889d5e52d2a927e78f21a1b93ca38ab687774437d2bd61
+ 0 B / 531 B  531 B / 531 B  0s
+Copying config sha256:0b62ca378b6f7fc63594ccc8b4479d6e4803e03ee83919c79239df02001deda4
+ 0 B / 12.82 KiB  12.82 KiB / 12.82 KiB  0s
+Writing manifest to image destination
+Storing signatures
+[34mINFO:   [0m Creating SIF file...
+[34mINFO:   [0m Build complete: /home/rra80/.singularity/cache/oci-tmp/69fd916d73b6585424236c59f31bb95987fa992d68c27120113a22b5b08cecbc/tensorflow_1.4.1-gpu.sif
+[34mINFO:   [0m Image cached as SIF at /home/rra80/.singularity/cache/oci-tmp/69fd916d73b6585424236c59f31bb95987fa992d68c27120113a22b5b08cecbc/tensorflow_1.4.1-gpu.sif
