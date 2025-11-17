@@ -6,7 +6,7 @@
 #SBATCH --mem=32G
 #SBATCH --cpus-per-task=8
 #SBATCH --constraint=ampere
-#SBATCH --exclude=gpu[018]
+#SBATCH --exclude=gpu[017,018]
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=${USER}@rutgers.edu
 #SBATCH --output=slurm/slurm_%j.out
