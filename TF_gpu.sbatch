@@ -17,6 +17,7 @@ mkdir -p slurm
 module purge
 
 module use /projects/community/modulefiles
-module load singularity
+module load apptainer
 
-srun singularity exec --nv nvcr.io/nvidia/jax:25.10-py3
+srun singularity run --nv jax_25.10-py3.sif
+
