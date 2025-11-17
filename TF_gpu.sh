@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=a1-mini-clip
+#SBATCH --job-name=run-emotion-detection
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --time=12:00:00
