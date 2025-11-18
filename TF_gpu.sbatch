@@ -15,13 +15,17 @@
 mkdir -p slurm
 
 module purge
-
 module use /projects/community/modulefiles
 module load apptainer
+
+mkdir -p /scratch/${USER}/apptainer/
+export APPTAINER_CACHEDIR = /scratch/${USER}/apptainer
 
 if [! -e jax_25-py3.sif]; then
   echo "Cached apptainer image not found, pulling new one"
   apptainer pull docker://nvcr.io/nvidia/jax:25.10-py3
+else
+  echo "Using cached apptainer image"
 fi
 
 srun singularity run --nv jax_25.10-py3.sif
