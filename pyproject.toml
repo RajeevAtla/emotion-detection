@@ -28,7 +28,7 @@ dev = [
     "pygments>=2.18.0",
 ]
 cuda = [
-    "jax[cuda12]>=0.8.0",
+    "jax[cuda13]>=0.8.0",
 ]
 
 [tool.pytest.ini_options]
