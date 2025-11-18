@@ -20,20 +20,26 @@ module load apptainer
 
 # set cache dir to scratch so we don't run out of space
 mkdir -p /scratch/${USER}/apptainer
-export APPTAINER_CACHEDIR = /scratch/${USER}/apptainer
+export APPTAINER_CACHEDIR=/scratch/${USER}/apptainer
 
-# pull jax container if not pulled 
-if [! -e jax_25-py3.sif]; then
+JAX_IMAGE=jax_25.10-py3.sif
+
+# pull jax container if not pulled
+if [ ! -f "${JAX_IMAGE}" ]; then
   echo "Cached apptainer image not found, pulling new one"
-  apptainer pull docker://nvcr.io/nvidia/jax:25.10-py3
+  apptainer pull "${JAX_IMAGE}" docker://nvcr.io/nvidia/jax:25.10-py3
 else
   echo "Using cached apptainer image"
 fi
 
-# load container once its been pulled
-apptainer exec --nv jax_25.10-py3.sif bash -c "
+# load container once it's been pulled
+apptainer exec --nv "${JAX_IMAGE}" bash -c '
+  set -euo pipefail
   source .venv/bin/activate
-  uv sync --group cuda;
-  uv run pytest --cov=src;
-"
+  if ! command -v uv >/dev/null 2>&1; then
+    python -m pip install --upgrade uv
+  fi
+  uv sync --group cuda
+  uv run pytest --cov=src
+'
 
