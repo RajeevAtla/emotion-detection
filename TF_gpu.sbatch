@@ -28,5 +28,5 @@ else
   echo "Using cached apptainer image"
 fi
 
-srun singularity run --nv jax_25.10-py3.sif
+srun apptainer run --nv jax_25.10-py3.sif
 
