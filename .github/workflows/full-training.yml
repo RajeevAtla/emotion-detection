@@ -2,6 +2,10 @@ name: Full Dataset Training
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   full-training:
