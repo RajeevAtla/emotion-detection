@@ -19,7 +19,7 @@ module use /projects/community/modulefiles
 module load apptainer
 
 # set cache dir to scratch so we don't run out of space
-mkdir -p /scratch/${USER}/apptainer/
+mkdir -p /scratch/${USER}/apptainer
 export APPTAINER_CACHEDIR = /scratch/${USER}/apptainer
 
 # pull jax container if not pulled 
