@@ -47,7 +47,7 @@ CUDA drivers).
 
 ### 3. Prepare Dataset
 
-Place FER-style data under `data/` with the following structure:
+There is FER-style data under `data/` with the following structure:
 
 ```
 data/
@@ -63,7 +63,14 @@ data/
     ...
 ```
 
-Each class directory should use one of the canonical labels (`angry`, `disgusted`, `fearful`, `happy`, `neutral`, `sad`, `surprised`). Files may be PNG/JPG/JPEG; the loader always converts them to single-channel float32 tensors and assumes the FER 48x48 resolution (no automatic resizing beyond the augmentation pipeline), so keep inputs at that size. The training split automatically produces a stratified validation set controlled by `data.val_ratio` (10% by default).
+Each class directory uses one of the canonical labels (`angry`, `disgusted`, `fearful`, `happy`, `neutral`, `sad`, `surprised`). Files may be PNG/JPG/JPEG; 
+the loader always converts them to single-channel float32 tensors and assumes the FER 48x48 resolution 
+(no automatic resizing beyond the augmentation pipeline), 
+so keep inputs at that size. 
+The training split automatically produces a stratified validation set controlled by `data.val_ratio` 
+(10% by default).
+
+TODO: add link to dataset
 
 ---
 
