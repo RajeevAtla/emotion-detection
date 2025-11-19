@@ -14,10 +14,16 @@
 
 mkdir -p slurm
 
+# check nvidia gpus/driver install on user-level system
+nvidia-smi
+
 module purge
 module use /projects/community/modulefiles
 module load apptainer
 module load git/2.35.1-ez82
+
+# check apptainer version
+apptainer --version
 
 # set cache dir to scratch so we don't run out of space
 mkdir -p /scratch/${USER}/apptainer
@@ -40,12 +46,10 @@ fi
 # load and execute commands on the container once it's been pulled
 apptainer exec --nv "${JAX_IMAGE}" bash -c '
   set -euo pipefail
+  python -m ensurepip --upgrade
+  python -m pip install --upgrade pip uv
   python -m venv .venv
   source .venv/bin/activate
-  if ! command -v uv >/dev/null 2>&1; then
-    python -m ensurepip --upgrade
-    python -m pip install --upgrade pip uv
-  fi
   uv sync --group cuda
   uv run pytest --cov=src
 '
