@@ -17,6 +17,7 @@ mkdir -p slurm
 module purge
 module use /projects/community/modulefiles
 module load apptainer
+module load git/2.35.1-ez82
 
 # set cache dir to scratch so we don't run out of space
 mkdir -p /scratch/${USER}/apptainer
