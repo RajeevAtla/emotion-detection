@@ -45,14 +45,23 @@ fi
 
 # load and execute commands on the container once it's been pulled
 apptainer exec --nv "${JAX_IMAGE}" bash -c '
+  # uv setup
+  echo "Container started"
   set -euo pipefail
   ls -a
   python --version
   which python
   curl -LsSf https://astral.sh/uv/install.sh | sh
   source $HOME/.local/bin/env
+  echo "uv installed!"
   uv --version
+  
+  # sync dependencies
   uv sync --group cuda
-  uv run pytest --cov=src
+  
+  # check jax+nvidia drivers+cuda are working correctly
+  nvidia-smi
+  nvcc --version
+  uv run python -c "jax.devices()"
 '
 
