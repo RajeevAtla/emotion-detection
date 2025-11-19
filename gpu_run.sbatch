@@ -22,6 +22,10 @@ module load apptainer
 mkdir -p /scratch/${USER}/apptainer
 export APPTAINER_CACHEDIR=/scratch/${USER}/apptainer
 
+# get current git commit
+echo "Current git commit: "
+git rev-parse --short HEAD
+
 JAX_IMAGE=jax_25.10-py3.sif
 
 # pull jax container if not pulled
