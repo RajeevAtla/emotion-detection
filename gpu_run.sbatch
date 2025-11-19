@@ -40,10 +40,11 @@ fi
 # load and execute commands on the container once it's been pulled
 apptainer exec --nv "${JAX_IMAGE}" bash -c '
   set -euo pipefail
+  python -m venv .venv
   source .venv/bin/activate
   if ! command -v uv >/dev/null 2>&1; then
     python -m ensurepip --upgrade
-    python -m pip install --upgrade uv
+    python -m pip install --upgrade pip uv
   fi
   uv sync --group cuda
   uv run pytest --cov=src
