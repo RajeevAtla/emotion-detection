@@ -62,6 +62,6 @@ apptainer exec --nv "${JAX_IMAGE}" bash -c '
   # check jax+nvidia drivers+cuda are working correctly
   nvidia-smi
   nvcc --version
-  uv run python -c "jax.devices()"
+  uv run python -c "import jax; jax.devices()"
 '
 
