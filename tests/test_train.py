@@ -420,6 +420,115 @@ def test_train_and_evaluate_handles_empty_batches(monkeypatch, tmp_path: Path) -
     )
     metrics = train_and_evaluate(config)
     assert math.isnan(metrics["train_loss"]) or metrics["train_loss"] == 0.0
+
+
+def test_train_and_evaluate_logs_to_console(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    """Enabling console logging should print step and epoch summaries."""
+
+    class MinimalDataModule:
+        class_weights = jnp.ones(2)
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def setup(self):
+            return
+
+        def split_counts(self):
+            return {
+                "train": {"neg": 1, "pos": 1},
+                "val": {"neg": 1, "pos": 1},
+                "test": {"neg": 1, "pos": 1},
+            }
+
+        def train_batches(self, **kwargs):
+            def generator():
+                yield jnp.ones((1, 1, 1, 1)), jnp.zeros((1,), dtype=jnp.int32)
+
+            return generator()
+
+        def val_batches(self, **kwargs):
+            return [
+                (jnp.ones((1, 1, 1, 1)), jnp.zeros((1,), dtype=jnp.int32))
+            ]
+
+        def test_batches(self, **kwargs):
+            return [
+                (jnp.ones((1, 1, 1, 1)), jnp.zeros((1,), dtype=jnp.int32))
+            ]
+
+    monkeypatch.setattr(train, "EmotionDataModule", MinimalDataModule)
+
+    fake_state = _make_train_state()
+
+    monkeypatch.setattr(
+        train,
+        "initialize_nnx_model",
+        lambda *args, **kwargs: (TinyNNXModel(rngs=nnx.Rngs(0)), nnx.Rngs(1)),
+    )
+    monkeypatch.setattr(
+        train,
+        "create_train_state",
+        lambda *args, **kwargs: fake_state,
+    )
+
+    def stub_train_step(state, batch):
+        return state, {
+            "loss": jnp.array(0.1, dtype=jnp.float32),
+            "accuracy": jnp.array(0.9, dtype=jnp.float32),
+        }
+
+    def stub_eval_step(state, batch):
+        return (
+            {
+                "loss": jnp.array(0.2, dtype=jnp.float32),
+                "accuracy": jnp.array(0.8, dtype=jnp.float32),
+            },
+            jnp.zeros(batch[0].shape[0], dtype=jnp.int32),
+        )
+
+    def stub_predict_batches(state, batches, config_obj):
+        batch = next(iter(batches))
+        return (
+            jnp.zeros((batch[0].shape[0],), dtype=jnp.int32),
+            jnp.zeros((batch[0].shape[0],), dtype=jnp.int32),
+        )
+
+    def stub_save_checkpoint(state, config_obj, epoch):
+        path = tmp_path / f"epoch_{epoch:04d}"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    monkeypatch.setattr(train, "build_train_step", lambda *a, **k: stub_train_step)
+    monkeypatch.setattr(train, "build_eval_step", lambda *a, **k: stub_eval_step)
+    monkeypatch.setattr(train, "predict_batches", stub_predict_batches)
+    monkeypatch.setattr(train, "save_checkpoint", stub_save_checkpoint)
+    monkeypatch.setattr(
+        train, "maybe_restore_checkpoint", lambda config, state: None
+    )
+    monkeypatch.setattr(
+        train.checkpointing,
+        "restore_payload",
+        lambda path, template: template,
+    )
+
+    config = TrainingConfig(
+        data=DataModuleConfig(data_dir=tmp_path, batch_size=1),
+        output_dir=tmp_path / "console",
+        num_epochs=1,
+        checkpoint_every=1,
+        patience=1,
+        log_every=1,
+        log_to_console=True,
+    )
+    train_and_evaluate(config)
+    captured = capsys.readouterr().out
+    assert "[epoch 001 step 00001]" in captured
+    assert "train loss=0.1000" in captured
+    assert "[epoch 001] train_loss=0.1000" in captured
+    assert "val_loss=0.2000" in captured
 def test_maybe_restore_checkpoint_none(tmp_path: Path, monkeypatch) -> None:
     """maybe_restore_checkpoint should handle absence or failure."""
     config = TrainingConfig(

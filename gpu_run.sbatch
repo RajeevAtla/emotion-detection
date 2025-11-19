@@ -12,6 +12,8 @@
 #SBATCH --output=slurm/slurm_%j.out
 #SBATCH --error=slurm/slurm_%j.err
 
+echo "Job started at: $(date)"
+
 mkdir -p slurm
 
 module purge
@@ -68,3 +70,4 @@ apptainer exec --nv "${JAX_IMAGE}" bash -c '
   --num-epochs 50
 '
 
+echo "Job completed at: $(date)"
