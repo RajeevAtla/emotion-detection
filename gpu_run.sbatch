@@ -49,6 +49,7 @@ apptainer exec --nv "${JAX_IMAGE}" bash -c '
   ls -a
   python --version
   which python
+  curl -LsSf https://astral.sh/uv/install.sh | sh
   uv --version
   # python -m pip --version
   # python -m pip install --upgrade pip uv
