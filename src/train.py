@@ -62,6 +62,7 @@ class TrainingConfig:
     label_smoothing: float = 0.0
     seed: int = 0
     log_every: int = 100
+    log_to_console: bool = False
     checkpoint_every: int = 5
     max_checkpoints: int = 3
     use_mixed_precision: bool = False
@@ -567,6 +568,14 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
                     },
                     global_step=global_step,
                 )
+                if config.log_to_console:
+                    print(
+                        "[epoch "
+                        f"{epoch:03d} step {step:05d}] "
+                        f"train loss={float(metrics['loss']):.4f} "
+                        f"accuracy={float(metrics['accuracy']):.4f}",
+                        flush=True,
+                    )
 
         if train_metrics:
             epoch_train_loss = float(
@@ -643,6 +652,18 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
             },
             global_step=epoch,
         )
+
+        if config.log_to_console:
+            print(
+                "[epoch "
+                f"{epoch:03d}] train_loss={epoch_train_loss:.4f} "
+                f"train_accuracy={epoch_train_acc:.4f} "
+                f"val_loss={epoch_val_loss:.4f} "
+                f"val_accuracy={epoch_val_acc:.4f} "
+                f"val_f1={val_f1:.4f} "
+                f"val_macro_f1={val_macro_f1:.4f}",
+                flush=True,
+            )
 
         history["train_loss"].append(epoch_train_loss)
         history["train_accuracy"].append(epoch_train_acc)

@@ -12,6 +12,7 @@ weight_decay = 0.0001
 gradient_accumulation_steps = 1
 label_smoothing = 0.0
 log_every = 25
+log_to_console = true
 checkpoint_every = 5
 max_checkpoints = 3
 use_mixed_precision = false
