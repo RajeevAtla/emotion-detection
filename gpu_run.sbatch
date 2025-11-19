@@ -37,11 +37,12 @@ else
   echo "Using cached apptainer image"
 fi
 
-# load container once it's been pulled
+# load and execute commands on the container once it's been pulled
 apptainer exec --nv "${JAX_IMAGE}" bash -c '
   set -euo pipefail
   source .venv/bin/activate
   if ! command -v uv >/dev/null 2>&1; then
+    python -m ensurepip --upgrade
     python -m pip install --upgrade uv
   fi
   uv sync --group cuda
