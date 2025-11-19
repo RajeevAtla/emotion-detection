@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=run-emotion-detection
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:2
 #SBATCH --time=12:00:00
 #SBATCH --mem=32G
 #SBATCH --cpus-per-task=8
@@ -63,8 +63,8 @@ apptainer exec --nv "${JAX_IMAGE}" bash -c '
   uv run python -m src.main \
   --config configs/example.toml \
   --output-dir runs \
-  --experiment-name gh-full \
+  --experiment-name 2-gpu-run-full \
   --seed 42 \
-  --num-epochs 2
+  --num-epochs 50
 '
 
