@@ -49,10 +49,11 @@ apptainer exec --nv "${JAX_IMAGE}" bash -c '
   ls -a
   python --version
   which python
-  python -m pip --version
-  python -m pip install --upgrade pip uv
-  python -m venv .venv
-  source .venv/bin/activate
+  uv --version
+  # python -m pip --version
+  # python -m pip install --upgrade pip uv
+  # python -m venv .venv
+  # source .venv/bin/activate
   uv sync --group cuda
   uv run pytest --cov=src
 '
