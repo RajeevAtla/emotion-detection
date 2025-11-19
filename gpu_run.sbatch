@@ -48,7 +48,6 @@ apptainer exec --nv "${JAX_IMAGE}" bash -c '
   # uv setup
   echo "Container started"
   set -euo pipefail
-  ls -a
   python --version
   which python
   curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -62,6 +61,6 @@ apptainer exec --nv "${JAX_IMAGE}" bash -c '
   # check jax+nvidia drivers+cuda are working correctly
   nvidia-smi
   nvcc --version
-  uv run python -c "import jax; jax.devices()"
+  uv run python -c "import jax; print(jax.devices())"
 '
 
