@@ -46,7 +46,10 @@ fi
 # load and execute commands on the container once it's been pulled
 apptainer exec --nv "${JAX_IMAGE}" bash -c '
   set -euo pipefail
-  python -m ensurepip --upgrade
+  ls -a
+  python --version
+  which python
+  python -m pip --version
   python -m pip install --upgrade pip uv
   python -m venv .venv
   source .venv/bin/activate
