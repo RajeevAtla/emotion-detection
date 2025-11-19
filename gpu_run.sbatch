@@ -14,9 +14,6 @@
 
 mkdir -p slurm
 
-# check nvidia gpus/driver install on user-level system
-nvidia-smi
-
 module purge
 module use /projects/community/modulefiles
 module load apptainer
@@ -35,7 +32,7 @@ git rev-parse --short HEAD
 
 JAX_IMAGE=jax_25.10-py3.sif
 
-# pull jax container if not pulled
+# pull nvidia's jax container if not pulled
 if [ ! -f "${JAX_IMAGE}" ]; then
   echo "Cached apptainer image not found, pulling new one"
   apptainer pull "${JAX_IMAGE}" docker://nvcr.io/nvidia/jax:25.10-py3
@@ -44,12 +41,11 @@ else
 fi
 
 # load and execute commands on the container once it's been pulled
-apptainer exec --nv "${JAX_IMAGE}" bash -c '
-  # uv setup
+apptainer exec --nv "${JAX_IMAGE}" bash -c "
   echo "Container started"
   set -euo pipefail
-  python --version
-  which python
+  
+  # uv setup
   curl -LsSf https://astral.sh/uv/install.sh | sh
   source $HOME/.local/bin/env
   echo "uv installed!"
@@ -62,5 +58,13 @@ apptainer exec --nv "${JAX_IMAGE}" bash -c '
   nvidia-smi
   nvcc --version
   uv run python -c "import jax; print(jax.devices())"
-'
+  
+  # run training
+  uv run python -m src.main \
+  --config configs/example.toml \
+  --output-dir runs \
+  --experiment-name gh-full \
+  --seed 42 \
+  --num-epochs 2
+"
 
