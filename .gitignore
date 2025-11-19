@@ -210,3 +210,5 @@ __marimo__/
 # sif files
 *.sif
 
+# checkpoint files
+runs/*/checkpoints/
