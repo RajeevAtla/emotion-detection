@@ -41,7 +41,7 @@ else
 fi
 
 # load and execute commands on the container once it's been pulled
-apptainer exec --nv "${JAX_IMAGE}" bash -c "
+apptainer exec --nv "${JAX_IMAGE}" bash -c '
   echo "Container started"
   set -euo pipefail
   
@@ -66,5 +66,5 @@ apptainer exec --nv "${JAX_IMAGE}" bash -c "
   --experiment-name gh-full \
   --seed 42 \
   --num-epochs 2
-"
+'
 
