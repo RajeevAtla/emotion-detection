@@ -1,0 +1,337 @@
+INFO:    Converting OCI blobs to SIF format
+INFO:    Starting build...
+Getting image source signatures
+Copying blob sha256:4f373b3ac86cd7657fe66e48ee482aad17eb2d976856010112a5574724d980c9
+Copying blob sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+Copying blob sha256:d42e52dd0cd2a1e7dee80105e29a0b9bbffc57c14e1f13fa933d485cf8f3c4a0
+Copying blob sha256:4b3ffd8ccb5201a0fc03585952effb4ed2d1ea5e704d2e7330212fb8b16c86a3
+Copying blob sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+Copying blob sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+Copying blob sha256:226bcbd9f2012bff1facb4e3f82e1c729ebc37aebda8959963efa88f13bd12df
+Copying blob sha256:40d55ba827aee7af2b6e317f7caa58a50aa0e0148c4234e63dec905d03c57bd8
+Copying blob sha256:4dd25e660b734bb9377dd6fcda61885ba04c04f98c1bef36501fbfad0754b1de
+Copying blob sha256:4fa3bb691e77762b576f9ee3ab08f7728eb8e47157e6deffc5808128c4c4ae98
+Copying blob sha256:27f6908e45a979a75b0ba8c74e7e50ec46865fe63955f7769e7cdadc62e864ca
+Copying blob sha256:72bc21f2e66fd9395a8ba3f04093b01b8fcc4f4a194a94b83ec1b99490d365a2
+Copying blob sha256:fbab2049d2af45a654048803e4b898ddd7f6ea7b11c8ff2ef9abaf2f21a93643
+Copying blob sha256:05c6c3e5e129f85649ddbc822efd2a59ff2d879887ab8bd652ff15d450408f72
+Copying blob sha256:f678fd90607db5913e65572d370858c199eb0348eb53071b4e74958472df6a63
+Copying blob sha256:ba56eea0580c191ef36e4fa1fb7ce7f54bd402058a6dcef824c2b0b3f19148c3
+Copying blob sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+Copying blob sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+Copying blob sha256:8eea666173482d6ea3b0f9a6f2bc3c92e146d143e68c447b45ca60c52d8c852a
+Copying blob sha256:d305eccf0816f583aa90304fc385c6f3232dd1077a126bc201ebeab09158aca8
+Copying blob sha256:326fb7bf7eb1006b377dc8b7a471e15f6e296a26ff189938d77a60d47378ddff
+Copying blob sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+Copying blob sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+Copying blob sha256:5bbb6c62a4b42028de19f215b53b2c016463e8a5a6e161a7c7105bfaaa4261ac
+Copying blob sha256:1ac03b52ba853891e54a4977b431cf6c399a9208defd28be4a7595250554dced
+Copying blob sha256:bd2f23c2581d9028acf9b1415e4bd3b2f139234a2bd6c73aee2d755ef218ff4b
+Copying blob sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+Copying blob sha256:b6dbc6a85893a85208cfe4506fc5e92e66d19bbe974129d7a24f58c4f7ab1edc
+Copying blob sha256:4fb54bbbb862e1d1e242124505e7907221a38097f03efe6562bf034b74a0cddf
+Copying blob sha256:414dd1793913dddd8289df844bfd5ba029735a911dc36c8fb1e7e12f25250a1e
+Copying blob sha256:f3d26944b9a56e0725412b3c9df159297f4466471766fd698b77aba6706837a4
+Copying blob sha256:f59053e90f50cf74b31ea4109a6254833608027e75fdb79ad957c3afd1947a66
+Copying blob sha256:2cca84df59bb054006271299096871c0d85af2bb59cd2fb502bd2c637b57722d
+Copying blob sha256:a7fb1edd0efdfbd82f120cd010ea2ef235dcf40696d1d74d4abdf4072c9c9120
+Copying blob sha256:048d9173e70706a80abdac82b1d1e7199e1f85530d56b409dcddbf7003e6ac10
+Copying blob sha256:e9e1ff6b130ba22e2ddf758786044c8f113d704ab24d03a5a335e22706175d5a
+Copying blob sha256:be49cea788799f9eb841780415ee25c242fe7352a3ec5af6b18dfc6eddd08acc
+Copying blob sha256:79711a4d32fd9f482aae492c641e6b4212d7a87f64f9c55cec18b47d5ad85db5
+Copying blob sha256:25497ec209245ffbe72f5af3f1ad2c3c9628363910de153dc9a7d62a476c492d
+Copying blob sha256:3dc823c035cefd19afe6f46df1a4755ac341df25383d6532e07f28a9fd824034
+Copying blob sha256:8d98d3c6f61c7c442f1cf56646910f021ba4be499a3ed1ff8dd32376a749f08f
+Copying blob sha256:b4d101d8247739148107c83fcc361713e3f5e8e3ac0b1cff0a813fab736fcaa6
+Copying blob sha256:b1592caeaf37fcc6413f35ddea0de095e0cd463676664ca76545627ce34a9691
+Copying blob sha256:a6d89af57f591a150102af3f61db61db06443c54cbff4a48af62a49a26f79c61
+Copying blob sha256:494887ed3e2800ef8bfd6dbaf121862fb479b02c07d36a7fc3baf09a4107190a
+Copying blob sha256:1ffd2103d38f60b58c5096e4f8b998ce36650ee126b26fbebe897af2a8199873
+Copying blob sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+Copying blob sha256:806961c0118e98bfcf51c240db5867b93a16df635b34d704b31821b0404d2477
+Copying blob sha256:a4f487665f14be0e2579d8873fff144e9eb275b45c0c34e4c7ff9bccc0236a0a
+Copying blob sha256:4dac42c12c0a21014c497b23c67462b736fb54d6b186abda4eef82107f9258ae
+Copying blob sha256:493904c96178b553e622286a19d89c5b80026ed398df7f45d6490e00ef60f9ae
+Copying blob sha256:fff52b14abfc12771e7db7345e5016aaf5b6966feb3e7ede0f96f7a851eb84e3
+Copying blob sha256:2c015e8bae2ef81b7f048348202af1308c2c760b6c11eeac96e12784c22a6161
+Copying blob sha256:9f91c6162209d322e438eb953cc0d9160e66c89305bd361be6cd0c32e450b818
+Copying blob sha256:259353f3ab066288a726a4841da35fa111c0032ba6e68bd5cce3ffd628b43608
+Copying blob sha256:d6559fc4ddfa7883962f1c56dcf09b44ebac84e57ba75fc35def21cc19be78d2
+Copying blob sha256:77bb7edaf3fdd1eb9dc63bc4137eaabb2bd822c8f56cdf38be37ec1ed4dedeee
+Copying blob sha256:d415da9b2270544d2970b492c6cbfde6cb5d921f9739426451b7e49ad1f6f0a2
+Copying blob sha256:71d3635df93c4357a4a9a7a48903297fe2e5584bc94b7945aa96a71461dc42f9
+Copying blob sha256:e82ea21f97fab5578144025b44b5965b86a29bb3aef900ab57610e06984b897f
+Copying blob sha256:d20408cfd3d0b8e18b38f0367575e05de82cfeacc435348e9677f13e6a9e0323
+Copying blob sha256:bf72924a0fdc882606a069e1c7451b9d73a43327d7ac55ba88c2838ad67bc7fb
+Copying blob sha256:f8f2884f2618bb717528fbb863b689113aa032cbb1087a4ad6901a5335a955f0
+Copying blob sha256:fb44fce7af661727d653dfd16dd7d6a448d14d736dcdcbadb2921e719186b9b9
+Copying blob sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+Copying blob sha256:5b99269a23596d809e67d6da65238f31a894011450a9dd544ef99e7f003e04c1
+Copying blob sha256:5f97eef9460fb608f4e580d8ed26237656335fcd2f9b80075cb2c328cae90f33
+Copying blob sha256:0f96b2450ea37861a08c3198011bf6f6665125b82cbb1cd0fa3c058091e4fd16
+Copying blob sha256:a3963738d44e6863b2e4da69182ee565ebdf72971060d75bdd8c3279f91f07fb
+Copying blob sha256:5a870de124badece7fa5b6d2c8587f4cb6d1f3382368d12f1da1b18b7c7fd5cb
+Copying blob sha256:637559ec157d3f7a1f2986a05fb7a3d6048e44ece3fda9ec2cb222ef0ed8b697
+Copying config sha256:3000134614b8bef5e4f55fc9765c0bee0375c6af5e62eb37cc5ef9a05af7cd3b
+Writing manifest to image destination
+Storing signatures
+2025/11/19 10:53:24  info unpack layer: sha256:4b3ffd8ccb5201a0fc03585952effb4ed2d1ea5e704d2e7330212fb8b16c86a3
+2025/11/19 10:53:24  warn xattr{etc/gshadow} ignoring ENOTSUP on setxattr "user.rootlesscontainers"
+2025/11/19 10:53:24  warn xattr{/tmp/build-temp-2061738470/rootfs/etc/gshadow} destination filesystem does not support xattrs, further warnings will be suppressed
+2025/11/19 10:53:25  info unpack layer: sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+2025/11/19 10:53:25  info unpack layer: sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+2025/11/19 10:53:25  info unpack layer: sha256:d42e52dd0cd2a1e7dee80105e29a0b9bbffc57c14e1f13fa933d485cf8f3c4a0
+2025/11/19 10:53:25  warn xattr{var/log/apt/term.log} ignoring ENOTSUP on setxattr "user.rootlesscontainers"
+2025/11/19 10:53:25  warn xattr{/tmp/build-temp-2061738470/rootfs/var/log/apt/term.log} destination filesystem does not support xattrs, further warnings will be suppressed
+2025/11/19 10:53:25  info unpack layer: sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+2025/11/19 10:53:25  info unpack layer: sha256:4f373b3ac86cd7657fe66e48ee482aad17eb2d976856010112a5574724d980c9
+2025/11/19 10:53:25  warn xattr{var/log/apt/term.log} ignoring ENOTSUP on setxattr "user.rootlesscontainers"
+2025/11/19 10:53:25  warn xattr{/tmp/build-temp-2061738470/rootfs/var/log/apt/term.log} destination filesystem does not support xattrs, further warnings will be suppressed
+2025/11/19 10:53:25  info unpack layer: sha256:226bcbd9f2012bff1facb4e3f82e1c729ebc37aebda8959963efa88f13bd12df
+2025/11/19 10:53:25  warn xattr{etc/gshadow} ignoring ENOTSUP on setxattr "user.rootlesscontainers"
+2025/11/19 10:53:25  warn xattr{/tmp/build-temp-2061738470/rootfs/etc/gshadow} destination filesystem does not support xattrs, further warnings will be suppressed
+2025/11/19 10:53:27  info unpack layer: sha256:40d55ba827aee7af2b6e317f7caa58a50aa0e0148c4234e63dec905d03c57bd8
+2025/11/19 10:53:29  info unpack layer: sha256:4dd25e660b734bb9377dd6fcda61885ba04c04f98c1bef36501fbfad0754b1de
+2025/11/19 10:53:29  info unpack layer: sha256:4fa3bb691e77762b576f9ee3ab08f7728eb8e47157e6deffc5808128c4c4ae98
+2025/11/19 10:53:29  warn xattr{usr/share/doc/cuda-runtime-9-0/NVIDIA-CUDA.jpg} ignoring ENOTSUP on setxattr "user.rootlesscontainers"
+2025/11/19 10:53:29  warn xattr{/tmp/build-temp-2061738470/rootfs/usr/share/doc/cuda-runtime-9-0/NVIDIA-CUDA.jpg} destination filesystem does not support xattrs, further warnings will be suppressed
+2025/11/19 10:53:29  info unpack layer: sha256:27f6908e45a979a75b0ba8c74e7e50ec46865fe63955f7769e7cdadc62e864ca
+2025/11/19 10:53:29  info unpack layer: sha256:72bc21f2e66fd9395a8ba3f04093b01b8fcc4f4a194a94b83ec1b99490d365a2
+2025/11/19 10:53:30  warn xattr{var/lib/apt/lists/auxfiles} ignoring ENOTSUP on setxattr "user.rootlesscontainers"
+2025/11/19 10:53:30  warn xattr{/tmp/build-temp-2061738470/rootfs/var/lib/apt/lists/auxfiles} destination filesystem does not support xattrs, further warnings will be suppressed
+2025/11/19 10:53:30  info unpack layer: sha256:fbab2049d2af45a654048803e4b898ddd7f6ea7b11c8ff2ef9abaf2f21a93643
+2025/11/19 10:53:30  info unpack layer: sha256:05c6c3e5e129f85649ddbc822efd2a59ff2d879887ab8bd652ff15d450408f72
+2025/11/19 10:53:30  info unpack layer: sha256:f678fd90607db5913e65572d370858c199eb0348eb53071b4e74958472df6a63
+2025/11/19 10:53:30  info unpack layer: sha256:ba56eea0580c191ef36e4fa1fb7ce7f54bd402058a6dcef824c2b0b3f19148c3
+2025/11/19 10:53:30  info unpack layer: sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+2025/11/19 10:53:30  info unpack layer: sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+2025/11/19 10:53:30  info unpack layer: sha256:8eea666173482d6ea3b0f9a6f2bc3c92e146d143e68c447b45ca60c52d8c852a
+2025/11/19 10:53:33  warn xattr{var/log/apt/term.log} ignoring ENOTSUP on setxattr "user.rootlesscontainers"
+2025/11/19 10:53:33  warn xattr{/tmp/build-temp-2061738470/rootfs/var/log/apt/term.log} destination filesystem does not support xattrs, further warnings will be suppressed
+2025/11/19 10:53:33  info unpack layer: sha256:d305eccf0816f583aa90304fc385c6f3232dd1077a126bc201ebeab09158aca8
+2025/11/19 10:53:37  info unpack layer: sha256:326fb7bf7eb1006b377dc8b7a471e15f6e296a26ff189938d77a60d47378ddff
+2025/11/19 10:54:16  info unpack layer: sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+2025/11/19 10:54:16  info unpack layer: sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+2025/11/19 10:54:16  info unpack layer: sha256:5bbb6c62a4b42028de19f215b53b2c016463e8a5a6e161a7c7105bfaaa4261ac
+2025/11/19 10:54:16  warn xattr{etc/gshadow} ignoring ENOTSUP on setxattr "user.rootlesscontainers"
+2025/11/19 10:54:16  warn xattr{/tmp/build-temp-2061738470/rootfs/etc/gshadow} destination filesystem does not support xattrs, further warnings will be suppressed
+2025/11/19 10:54:16  info unpack layer: sha256:1ac03b52ba853891e54a4977b431cf6c399a9208defd28be4a7595250554dced
+2025/11/19 10:54:16  info unpack layer: sha256:bd2f23c2581d9028acf9b1415e4bd3b2f139234a2bd6c73aee2d755ef218ff4b
+2025/11/19 10:54:26  info unpack layer: sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+2025/11/19 10:54:26  info unpack layer: sha256:b6dbc6a85893a85208cfe4506fc5e92e66d19bbe974129d7a24f58c4f7ab1edc
+2025/11/19 10:54:26  warn xattr{etc/gshadow} ignoring ENOTSUP on setxattr "user.rootlesscontainers"
+2025/11/19 10:54:26  warn xattr{/tmp/build-temp-2061738470/rootfs/etc/gshadow} destination filesystem does not support xattrs, further warnings will be suppressed
+2025/11/19 10:54:30  info unpack layer: sha256:4fb54bbbb862e1d1e242124505e7907221a38097f03efe6562bf034b74a0cddf
+2025/11/19 10:54:30  info unpack layer: sha256:414dd1793913dddd8289df844bfd5ba029735a911dc36c8fb1e7e12f25250a1e
+2025/11/19 10:54:30  info unpack layer: sha256:f3d26944b9a56e0725412b3c9df159297f4466471766fd698b77aba6706837a4
+2025/11/19 10:54:30  info unpack layer: sha256:f59053e90f50cf74b31ea4109a6254833608027e75fdb79ad957c3afd1947a66
+2025/11/19 10:54:30  info unpack layer: sha256:2cca84df59bb054006271299096871c0d85af2bb59cd2fb502bd2c637b57722d
+2025/11/19 10:54:31  info unpack layer: sha256:a7fb1edd0efdfbd82f120cd010ea2ef235dcf40696d1d74d4abdf4072c9c9120
+2025/11/19 10:54:31  info unpack layer: sha256:048d9173e70706a80abdac82b1d1e7199e1f85530d56b409dcddbf7003e6ac10
+2025/11/19 10:54:31  info unpack layer: sha256:e9e1ff6b130ba22e2ddf758786044c8f113d704ab24d03a5a335e22706175d5a
+2025/11/19 10:54:32  info unpack layer: sha256:be49cea788799f9eb841780415ee25c242fe7352a3ec5af6b18dfc6eddd08acc
+2025/11/19 10:54:32  info unpack layer: sha256:79711a4d32fd9f482aae492c641e6b4212d7a87f64f9c55cec18b47d5ad85db5
+2025/11/19 10:54:32  info unpack layer: sha256:25497ec209245ffbe72f5af3f1ad2c3c9628363910de153dc9a7d62a476c492d
+2025/11/19 10:54:32  info unpack layer: sha256:3dc823c035cefd19afe6f46df1a4755ac341df25383d6532e07f28a9fd824034
+2025/11/19 10:54:32  info unpack layer: sha256:8d98d3c6f61c7c442f1cf56646910f021ba4be499a3ed1ff8dd32376a749f08f
+2025/11/19 10:54:32  info unpack layer: sha256:b4d101d8247739148107c83fcc361713e3f5e8e3ac0b1cff0a813fab736fcaa6
+2025/11/19 10:54:32  info unpack layer: sha256:b1592caeaf37fcc6413f35ddea0de095e0cd463676664ca76545627ce34a9691
+2025/11/19 10:54:32  info unpack layer: sha256:a6d89af57f591a150102af3f61db61db06443c54cbff4a48af62a49a26f79c61
+2025/11/19 10:54:32  info unpack layer: sha256:494887ed3e2800ef8bfd6dbaf121862fb479b02c07d36a7fc3baf09a4107190a
+2025/11/19 10:54:32  info unpack layer: sha256:1ffd2103d38f60b58c5096e4f8b998ce36650ee126b26fbebe897af2a8199873
+2025/11/19 10:54:32  info unpack layer: sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+2025/11/19 10:54:32  info unpack layer: sha256:806961c0118e98bfcf51c240db5867b93a16df635b34d704b31821b0404d2477
+2025/11/19 10:54:32  info unpack layer: sha256:a4f487665f14be0e2579d8873fff144e9eb275b45c0c34e4c7ff9bccc0236a0a
+2025/11/19 10:54:35  info unpack layer: sha256:4dac42c12c0a21014c497b23c67462b736fb54d6b186abda4eef82107f9258ae
+2025/11/19 10:54:35  info unpack layer: sha256:493904c96178b553e622286a19d89c5b80026ed398df7f45d6490e00ef60f9ae
+2025/11/19 10:54:35  info unpack layer: sha256:fff52b14abfc12771e7db7345e5016aaf5b6966feb3e7ede0f96f7a851eb84e3
+2025/11/19 10:54:35  info unpack layer: sha256:2c015e8bae2ef81b7f048348202af1308c2c760b6c11eeac96e12784c22a6161
+2025/11/19 10:54:35  info unpack layer: sha256:9f91c6162209d322e438eb953cc0d9160e66c89305bd361be6cd0c32e450b818
+2025/11/19 10:54:35  info unpack layer: sha256:259353f3ab066288a726a4841da35fa111c0032ba6e68bd5cce3ffd628b43608
+2025/11/19 10:54:35  info unpack layer: sha256:d6559fc4ddfa7883962f1c56dcf09b44ebac84e57ba75fc35def21cc19be78d2
+2025/11/19 10:54:35  info unpack layer: sha256:77bb7edaf3fdd1eb9dc63bc4137eaabb2bd822c8f56cdf38be37ec1ed4dedeee
+2025/11/19 10:54:39  info unpack layer: sha256:d415da9b2270544d2970b492c6cbfde6cb5d921f9739426451b7e49ad1f6f0a2
+2025/11/19 10:54:40  info unpack layer: sha256:71d3635df93c4357a4a9a7a48903297fe2e5584bc94b7945aa96a71461dc42f9
+2025/11/19 10:54:44  info unpack layer: sha256:e82ea21f97fab5578144025b44b5965b86a29bb3aef900ab57610e06984b897f
+2025/11/19 10:54:44  info unpack layer: sha256:d20408cfd3d0b8e18b38f0367575e05de82cfeacc435348e9677f13e6a9e0323
+2025/11/19 10:54:46  info unpack layer: sha256:bf72924a0fdc882606a069e1c7451b9d73a43327d7ac55ba88c2838ad67bc7fb
+2025/11/19 10:54:48  info unpack layer: sha256:f8f2884f2618bb717528fbb863b689113aa032cbb1087a4ad6901a5335a955f0
+2025/11/19 10:54:48  info unpack layer: sha256:fb44fce7af661727d653dfd16dd7d6a448d14d736dcdcbadb2921e719186b9b9
+2025/11/19 10:54:48  info unpack layer: sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
+2025/11/19 10:54:48  info unpack layer: sha256:5b99269a23596d809e67d6da65238f31a894011450a9dd544ef99e7f003e04c1
+2025/11/19 10:54:48  info unpack layer: sha256:5f97eef9460fb608f4e580d8ed26237656335fcd2f9b80075cb2c328cae90f33
+2025/11/19 10:54:49  info unpack layer: sha256:0f96b2450ea37861a08c3198011bf6f6665125b82cbb1cd0fa3c058091e4fd16
+2025/11/19 10:54:52  info unpack layer: sha256:a3963738d44e6863b2e4da69182ee565ebdf72971060d75bdd8c3279f91f07fb
+2025/11/19 10:54:52  info unpack layer: sha256:5a870de124badece7fa5b6d2c8587f4cb6d1f3382368d12f1da1b18b7c7fd5cb
+2025/11/19 10:54:52  info unpack layer: sha256:637559ec157d3f7a1f2986a05fb7a3d6048e44ece3fda9ec2cb222ef0ed8b697
+INFO:    Creating SIF file...
+INFO:    underlay of /usr/bin/nvidia-persistenced required more than 50 (479) bind mounts
+15:4: not a valid test operator:  
+15:4: not a valid test operator: 13.0
+21:4: not a valid test operator: (
+21:4: not a valid test operator: 535.154.05
+downloading uv 0.9.10 x86_64-unknown-linux-gnu
+Downloading cpython-3.13.9-linux-x86_64-gnu (download) (31.8MiB)
+ Downloading cpython-3.13.9-linux-x86_64-gnu (download)
+Using CPython 3.13.9
+Creating virtual environment at: .venv
+Resolved 75 packages in 2ms
+Downloading ml-dtypes (4.7MiB)
+Downloading pydantic-core (2.0MiB)
+Downloading setuptools (1.1MiB)
+Downloading tensorboard-data-server (6.3MiB)
+Downloading ruff (13.2MiB)
+Downloading grpcio (6.3MiB)
+Downloading nvidia-nvjitlink (38.8MiB)
+Downloading jaxlib (76.0MiB)
+Downloading nvidia-cusparse (139.2MiB)
+Downloading nvidia-cuda-nvrtc (86.0MiB)
+Downloading scipy (34.0MiB)
+Downloading nvidia-cuda-runtime (2.1MiB)
+Downloading nvidia-cuda-cupti (10.2MiB)
+Downloading jax (2.8MiB)
+Downloading nvidia-cudnn-cu13 (335.0MiB)
+Downloading tensorstore (20.0MiB)
+Downloading numpy (15.9MiB)
+Downloading pillow (6.7MiB)
+Downloading nvidia-cuda-nvcc (35.7MiB)
+Downloading nvidia-cufft (204.2MiB)
+Downloading ty (8.8MiB)
+Downloading nvidia-nccl-cu13 (187.4MiB)
+Downloading tensorboard (5.3MiB)
+Downloading jax-cuda13-pjrt (102.0MiB)
+Downloading nvidia-nvvm (58.7MiB)
+Downloading pygments (1.2MiB)
+Downloading nvidia-nvshmem-cu13 (57.6MiB)
+Downloading nvidia-cusolver (191.6MiB)
+Downloading nvidia-cublas (403.5MiB)
+Downloading jax-cuda13-plugin (5.3MiB)
+ Downloading pydantic-core
+ Downloading nvidia-cuda-runtime
+ Downloading ml-dtypes
+ Downloading pygments
+ Downloading jax-cuda13-plugin
+ Downloading tensorboard-data-server
+ Downloading grpcio
+ Downloading setuptools
+ Downloading pillow
+ Downloading tensorboard
+ Downloading jax
+ Downloading ty
+ Downloading nvidia-cuda-cupti
+ Downloading ruff
+ Downloading tensorstore
+ Downloading numpy
+ Downloading nvidia-cuda-nvcc
+ Downloading scipy
+ Downloading nvidia-nvjitlink
+ Downloading nvidia-nvshmem-cu13
+ Downloading nvidia-nvvm
+ Downloading jaxlib
+ Downloading nvidia-cuda-nvrtc
+ Downloading jax-cuda13-pjrt
+ Downloading nvidia-cusparse
+ Downloading nvidia-cusolver
+ Downloading nvidia-nccl-cu13
+ Downloading nvidia-cufft
+ Downloading nvidia-cudnn-cu13
+ Downloading nvidia-cublas
+Prepared 73 packages in 20.97s
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 73 packages in 1m 25s
+ + absl-py==2.3.1
+ + aiofiles==25.1.0
+ + annotated-types==0.7.0
+ + chex==0.1.91
+ + clu==0.0.12
+ + coverage==7.11.3
+ + etils==1.13.0
+ + flax==0.12.0
+ + fsspec==2025.10.0
+ + google-metrax==0.2.4
+ + grpcio==1.76.0
+ + humanize==4.14.0
+ + importlib-resources==6.5.2
+ + iniconfig==2.3.0
+ + jax==0.8.0
+ + jax-cuda13-pjrt==0.8.0
+ + jax-cuda13-plugin==0.8.0
+ + jaxlib==0.8.0
+ + markdown==3.10
+ + markdown-it-py==4.0.0
+ + markupsafe==3.0.3
+ + mdurl==0.1.2
+ + ml-collections==1.1.0
+ + ml-dtypes==0.5.3
+ + msgpack==1.1.2
+ + nest-asyncio==1.6.0
+ + numpy==2.3.4
+ + nvidia-cublas==13.1.0.3
+ + nvidia-cuda-crt==13.0.88
+ + nvidia-cuda-cupti==13.0.85
+ + nvidia-cuda-nvcc==13.0.88
+ + nvidia-cuda-nvrtc==13.0.88
+ + nvidia-cuda-runtime==13.0.96
+ + nvidia-cudnn-cu13==9.16.0.29
+ + nvidia-cufft==12.0.0.61
+ + nvidia-cusolver==12.0.4.66
+ + nvidia-cusparse==12.6.3.3
+ + nvidia-nccl-cu13==2.28.7
+ + nvidia-nvjitlink==13.0.88
+ + nvidia-nvshmem-cu13==3.4.5
+ + nvidia-nvvm==13.0.88
+ + opt-einsum==3.4.0
+ + optax==0.2.6
+ + orbax-checkpoint==0.11.28
+ + packaging==25.0
+ + pillow==12.0.0
+ + pluggy==1.6.0
+ + protobuf==6.33.1
+ + psutil==7.1.3
+ + pydantic==2.12.4
+ + pydantic-core==2.41.5
+ + pygments==2.19.2
+ + pytest==9.0.1
+ + pytest-cov==7.0.0
+ + pyyaml==6.0.3
+ + rich==14.2.0
+ + ruff==0.14.5
+ + scipy==1.16.3
+ + setuptools==80.9.0
+ + simplejson==3.20.2
+ + tensorboard==2.20.0
+ + tensorboard-data-server==0.7.2
+ + tensorboardx==2.6.4
+ + tensorstore==0.1.79
+ + tomli-w==1.2.0
+ + toolz==1.1.0
+ + treescope==0.1.10
+ + ty==0.0.1a26
+ + typing-extensions==4.15.0
+ + typing-inspection==0.4.2
+ + werkzeug==3.1.3
+ + wrapt==2.0.1
+ + zipp==3.23.0
+WARNING:absl:[process=0][thread=MainThread][operation_id=1] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=2] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=3] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=4] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=5] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=6] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=7] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=8] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=9] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=10] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=11] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=12] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=13] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=14] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=15] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=16] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=17] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=18] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=19] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=20] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.
+WARNING:absl:[process=0][thread=MainThread][operation_id=21] _SignalingThread.join() waiting for signals ([]) blocking the main thread will slow down blocking save times. This is likely due to main thread calling result() on a CommitFuture.

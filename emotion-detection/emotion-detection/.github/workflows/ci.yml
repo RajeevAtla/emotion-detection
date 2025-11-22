@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  multi-gpu-test:
+  runs-on: ubuntu-latest
+  if: contains(github.event.head_commit.message, '[multi-gpu]')
+  
+  steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        python-version: "3.13"
+
+    - name: Simulate multi-GPU (4 devices)
+      run: |
+        export XLA_FLAGS="--xla_force_host_platform_device_count=4"
+        uv sync
+        uv run pytest tests/test_distributed.py -v
+
+  lint-test:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_COLOR: "1"
+      GITHUB_ACTIONS: "true"
+      CLICOLOR_FORCE: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          activate-environment: "true"
+          enable-cache: "true"
+          restore-cache: "true"
+          save-cache: "true"
+          cache-python: "true"
+
+      - name: Sync dependencies
+        run: uv sync --dev
+
+      - name: Run Ruff
+        run: uv run ruff check
+
+      - name: Run Ty
+        run: uv run ty check src
+
+      - name: Run Pytest
+        run: uv run pytest --cov=src

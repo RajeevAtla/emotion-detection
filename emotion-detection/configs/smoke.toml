@@ -1,0 +1,40 @@
+[training]
+output_dir = "runs"
+model_depth = 18
+width_multiplier = 1
+dropout_rate = 0.0
+num_epochs = 1
+batch_size = 8
+learning_rate = 0.0003
+min_learning_rate = 0.00001
+warmup_epochs = 0
+weight_decay = 0.0
+gradient_accumulation_steps = 1
+label_smoothing = 0.0
+log_every = 5
+log_to_console = true
+checkpoint_every = 1
+max_checkpoints = 1
+use_mixed_precision = false
+patience = 1
+experiment_name = "smoke"
+
+[training.data]
+data_dir = "data"
+batch_size = 8
+val_ratio = 0.1
+augment = false
+
+[training.data.augmentation]
+horizontal_flip_prob = 0.0
+rotation_degrees = 0.0
+scale_range = [1.0, 1.0]
+enabled = false
+
+[training.data.insightface]
+enabled = true
+det_size = [640, 640]
+det_thresh = 0.5
+model_pack = "buffalo_l"
+align_faces = true
+expand_ratio = 1.1

@@ -1,0 +1,135 @@
+name: Smoke Training
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  smoke-run:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_COLOR: "1"
+      GITHUB_ACTIONS: "true"
+      CLICOLOR_FORCE: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          activate-environment: "true"
+          enable-cache: "true"
+          restore-cache: "true"
+          save-cache: "true"
+          cache-python: "true"
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Prepare smoke dataset
+        id: prepare-smoke
+        run: |
+          uv run python - <<'PY'
+          from pathlib import Path
+          import os
+
+          import numpy as np
+          from PIL import Image
+          import tomllib
+          import tomli_w
+
+          classes = (
+              "angry",
+              "disgusted",
+              "fearful",
+              "happy",
+              "neutral",
+              "sad",
+              "surprised",
+          )
+
+          runner_temp = Path(os.environ.get("RUNNER_TEMP", "."))
+          data_root = runner_temp / "smoke-data"
+          data_root.mkdir(parents=True, exist_ok=True)
+
+          for split, count in (("train", 4), ("test", 2)):
+              for idx, name in enumerate(classes):
+                  class_dir = data_root / split / name
+                  class_dir.mkdir(parents=True, exist_ok=True)
+                  for img_idx in range(count):
+                      value = int(((idx + 1) * (img_idx + 1) * 37) % 255)
+                      arr = np.full((48, 48), value, dtype=np.uint8)
+                      Image.fromarray(arr).save(class_dir / f"img{img_idx}.png")
+
+          config_template = Path("configs/smoke.toml")
+          config_payload = tomllib.loads(config_template.read_text())
+          training_section = config_payload.setdefault("training", {})
+          data_section = training_section.setdefault("data", {})
+          data_section["data_dir"] = str(data_root)
+
+          config_path = runner_temp / "smoke_ci.toml"
+          config_path.write_text(
+              tomli_w.dumps(config_payload), encoding="utf-8"
+          )
+
+          github_output = Path(os.environ["GITHUB_OUTPUT"])
+          with github_output.open("a") as fh:
+              fh.write(f"config_path={config_path}\n")
+              fh.write(f"data_dir={data_root}\n")
+          PY
+
+      - name: Run smoke training config
+        run: |
+          uv run python -m src.main \
+            --config "${{ steps.prepare-smoke.outputs.config_path }}" \
+            --output-dir runs \
+            --seed 0 \
+            --experiment-name gh-smoke
+
+      - name: Validate smoke metrics
+        run: |
+          uv run python - <<'PY'
+          import tomllib
+          import math
+          from pathlib import Path
+
+          runs_dir = Path("runs")
+          if not runs_dir.exists():
+              raise SystemExit("runs directory missing after smoke execution")
+          run_dirs = sorted(runs_dir.glob("*"), key=lambda p: p.stat().st_mtime)
+          if not run_dirs:
+              raise SystemExit("no run directories found")
+          latest = run_dirs[-1]
+          metrics_path = latest / "metrics.toml"
+          if not metrics_path.exists():
+              raise SystemExit(f"metrics.toml missing at {metrics_path}")
+          metrics = tomllib.loads(metrics_path.read_text())
+          required = [
+              "train_loss",
+              "train_accuracy",
+              "val_loss",
+              "val_accuracy",
+          ]
+          for key in required:
+              if key not in metrics:
+                  raise SystemExit(f"missing metric: {key}")
+              value = metrics[key]
+              if value is None or (isinstance(value, float) and math.isnan(value)):
+                  raise SystemExit(f"invalid value for metric {key}: {value}")
+          PY
+
+      - name: Upload smoke artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-run-artifacts
+          path: |
+            runs
+            ${{ steps.prepare-smoke.outputs.config_path }}
+            ${{ steps.prepare-smoke.outputs.data_dir }}

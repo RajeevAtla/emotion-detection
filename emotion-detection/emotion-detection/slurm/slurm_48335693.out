@@ -1,0 +1,27 @@
+==========================================
+Job started: Fri Nov 21 11:24:41 EST 2025
+Job ID: 48335693
+Node: gpu028
+==========================================
+
+Using cached container
+
+Starting container...
+
+=== Environment Setup ===
+✓ Headless mode enabled
+
+=== Installing uv ===
+no checksums to verify
+installing to /home/vss54/.local/bin
+  uv
+  uvx
+everything's installed!
+✓ uv uv 0.9.11
+
+=== Setting Python 3.12 ===
+
+==========================================
+Job finished: Fri Nov 21 11:25:11 EST 2025
+Exit code: 1
+==========================================
