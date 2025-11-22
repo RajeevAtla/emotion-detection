@@ -1,0 +1,16 @@
+==========================================
+Job started: Fri Nov 21 11:46:22 EST 2025
+Job ID: 48336010
+Node: gpu028
+==========================================
+
+InsightFace cache (host): /scratch/vss54/.insightface
+
+Using cached container
+
+Starting container...
+
+=== Environment Setup ===
+✓ Headless mode enabled
+
+=== Installing uv ===

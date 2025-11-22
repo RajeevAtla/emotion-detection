@@ -1,0 +1,118 @@
+Wed Nov 19 00:28:24 2025       
++---------------------------------------------------------------------------------------+
+| NVIDIA-SMI 535.154.05             Driver Version: 535.154.05   CUDA Version: 12.2     |
+|-----------------------------------------+----------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |         Memory-Usage | GPU-Util  Compute M. |
+|                                         |                      |               MIG M. |
+|=========================================+======================+======================|
+|   0  NVIDIA A100-PCIE-40GB          On  | 00000000:06:00.0 Off |                    0 |
+| N/A   31C    P0              30W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+|   1  NVIDIA A100-PCIE-40GB          On  | 00000000:2F:00.0 Off |                    0 |
+| N/A   31C    P0              31W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+|   2  NVIDIA A100-PCIE-40GB          On  | 00000000:86:00.0 Off |                    0 |
+| N/A   30C    P0              32W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+|   3  NVIDIA A100-PCIE-40GB          On  | 00000000:D8:00.0 Off |                    0 |
+| N/A   29C    P0              31W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+                                                                                         
++---------------------------------------------------------------------------------------+
+| Processes:                                                                            |
+|  GPU   GI   CI        PID   Type   Process name                            GPU Memory |
+|        ID   ID                                                             Usage      |
+|=======================================================================================|
+|  No running processes found                                                           |
++---------------------------------------------------------------------------------------+
+apptainer version 1.2.5-1.el7
+Current git commit: 
+521b52cf
+Using cached apptainer image
+.
+..
+.git
+.github
+.gitignore
+.venv
+LICENSE
+README.md
+configs
+data
+gpu_run.sbatch
+jax_25.10-py3.sif
+pyproject.toml
+runs
+scripts
+slurm
+src
+tests
+uv.lock
+Python 3.12.3
+/usr/bin/python
+no checksums to verify
+installing to /home/rra80/.local/bin
+  uv
+  uvx
+everything's installed!
+uv 0.9.10
+============================= test session starts ==============================
+platform linux -- Python 3.13.9, pytest-9.0.1, pluggy-1.6.0
+rootdir: /scratch/rra80/emotion-detection
+configfile: pyproject.toml
+plugins: cov-7.0.0
+collected 89 items
+
+tests/test_checkpointing.py ..........                                   [ 11%]
+tests/test_data.py .................                                     [ 30%]
+tests/test_main.py ............................                          [ 61%]
+tests/test_model.py ..................                                   [ 82%]
+tests/test_train.py ................                                     [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.13/site-packages/flax/nnx/variablelib.py:49
+  /scratch/rra80/emotion-detection/.venv/lib/python3.13/site-packages/flax/nnx/variablelib.py:49: DeprecationWarning: jax.array_ref is deprecated; use jax.new_ref instead.
+    if hasattr(jax, 'array_ref') and hasattr(jax, 'ArrayRef'):
+
+.venv/lib/python3.13/site-packages/flax/nnx/variablelib.py:49
+  /scratch/rra80/emotion-detection/.venv/lib/python3.13/site-packages/flax/nnx/variablelib.py:49: DeprecationWarning: jax.ArrayRef is deprecated; use jax.Ref instead.
+    if hasattr(jax, 'array_ref') and hasattr(jax, 'ArrayRef'):
+
+tests/test_checkpointing.py: 4 warnings
+tests/test_model.py: 4 warnings
+tests/test_train.py: 8 warnings
+  /scratch/rra80/emotion-detection/.venv/lib/python3.13/site-packages/flax/nnx/statelib.py:340: DeprecationWarning: `flax.nnx.State` will be deprecated and be replaced by the built-in Python dict. Please use the equivalent `nnx.to_pure_dict` instead.
+    warnings.warn(
+
+tests/test_checkpointing.py::test_apply_nnx_state_updates_module
+tests/test_checkpointing.py::test_apply_nnx_state_to_object_handles_rngs
+tests/test_train.py::test_save_and_restore_checkpoint_roundtrip
+tests/test_train.py::test_save_and_restore_checkpoint_roundtrip
+tests/test_train.py::test_train_and_evaluate_runs_with_stubs
+  /scratch/rra80/emotion-detection/.venv/lib/python3.13/site-packages/flax/nnx/statelib.py:350: DeprecationWarning: `flax.nnx.State` will be deprecated and be replaced by the built-in Python dict. Please use the equivalent `nnx.replace_by_pure_dict` instead.
+    warnings.warn(
+
+tests/test_train.py::test_save_and_restore_checkpoint_roundtrip
+  /scratch/rra80/emotion-detection/.venv/lib/python3.13/site-packages/flax/nnx/statelib.py:317: DeprecationWarning: `flax.nnx.State` will be deprecated and be replaced by the built-in Python dict. Please use the equivalent `nnx.to_flat_state` instead.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.13.9-final-0 ________________
+
+Name                   Stmts   Miss  Cover
+------------------------------------------
+src/checkpointing.py      78      0   100%
+src/data.py              265      0   100%
+src/main.py              247      0   100%
+src/model.py             210      0   100%
+src/train.py             330      0   100%
+------------------------------------------
+TOTAL                   1130      0   100%
+Required test coverage of 100% reached. Total coverage: 100.00%
+================= 89 passed, 24 warnings in 120.03s (0:02:00) ==================

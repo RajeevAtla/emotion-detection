@@ -1,0 +1,14 @@
+Job started at: Fri Nov 21 10:13:23 EST 2025
+apptainer version 1.2.5-1.el7
+Current git commit: 
+93323f1a
+Using cached apptainer image
+Container started
+no checksums to verify
+installing to /home/vss54/.local/bin
+  uv
+  uvx
+everything's installed!
+uv installed!
+uv 0.9.11
+Job completed at: Fri Nov 21 10:13:40 EST 2025

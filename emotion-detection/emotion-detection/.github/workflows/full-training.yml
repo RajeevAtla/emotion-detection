@@ -1,0 +1,125 @@
+name: Full Dataset Training
+
+on:
+  workflow_dispatch:
+
+jobs:
+  full-training:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    outputs:
+      val_accuracy: ${{ steps.collect-metrics.outputs.val_accuracy }}
+      val_loss: ${{ steps.collect-metrics.outputs.val_loss }}
+      val_f1: ${{ steps.collect-metrics.outputs.val_f1 }}
+      test_accuracy: ${{ steps.collect-metrics.outputs.test_accuracy }}
+      test_loss: ${{ steps.collect-metrics.outputs.test_loss }}
+      test_f1: ${{ steps.collect-metrics.outputs.test_f1 }}
+      test_macro_f1: ${{ steps.collect-metrics.outputs.test_macro_f1 }}
+    env:
+      FORCE_COLOR: "1"
+      GITHUB_ACTIONS: "true"
+      CLICOLOR_FORCE: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          activate-environment: "true"
+          enable-cache: "true"
+          restore-cache: "true"
+          save-cache: "true"
+          cache-python: "true"
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Run full training (2 epochs)
+        run: |
+          uv run python -m src.main \
+            --config configs/example.toml \
+            --output-dir runs \
+            --experiment-name gh-full \
+            --seed 42 \
+            --num-epochs 2
+
+      - name: Collect validation and test metrics
+        id: collect-metrics
+        run: |
+          uv run python - <<'PY'
+          import math
+          import os
+          from pathlib import Path
+          import tomllib
+
+          runs_dir = Path("runs")
+          if not runs_dir.exists():
+              raise SystemExit("runs directory missing after training.")
+          run_dirs = sorted(
+              (path for path in runs_dir.iterdir() if path.is_dir()),
+              key=lambda path: path.stat().st_mtime,
+          )
+          if not run_dirs:
+              raise SystemExit("No run directories found in runs/.")
+          latest_run = run_dirs[-1]
+          metrics_path = latest_run / "metrics.toml"
+          if not metrics_path.exists():
+              raise SystemExit(f"metrics.toml missing at {metrics_path}")
+          metrics = tomllib.loads(metrics_path.read_text())
+
+          def _sanitize(value_name: str) -> float | None:
+              value = metrics.get(value_name)
+              if isinstance(value, (int, float)):
+                  numeric = float(value)
+                  if not math.isnan(numeric):
+                      return numeric
+              return None
+
+          summary_lines = [
+              f"Run directory: {latest_run}",
+              "",
+              "| Metric | Value |",
+              "| --- | --- |",
+          ]
+
+          def _format_row(label: str, key: str) -> None:
+              value = _sanitize(key)
+              formatted = f"{value:.4f}" if value is not None else "n/a"
+              summary_lines.append(f"| {label} | {formatted} |")
+
+          rows = [
+              ("Val Accuracy", "val_accuracy"),
+              ("Val Loss", "val_loss"),
+              ("Val F1", "val_f1"),
+              ("Test Accuracy", "test_accuracy"),
+              ("Test Loss", "test_loss"),
+              ("Test F1", "test_f1"),
+              ("Test Macro F1", "test_macro_f1"),
+          ]
+          for label, key in rows:
+              _format_row(label, key)
+
+          output_path = Path(os.environ["GITHUB_OUTPUT"])
+          with output_path.open("a", encoding="utf-8") as handle:
+              for _, key in rows:
+                  value = _sanitize(key)
+                  payload = "n/a" if value is None else f"{value}"
+                  handle.write(f"{key}={payload}\n")
+
+          summary_payload = "\n".join(summary_lines)
+          summary_path = Path(os.environ["GITHUB_STEP_SUMMARY"])
+          with summary_path.open("a+", encoding="utf-8") as handle:
+              handle.seek(0, os.SEEK_END)
+              if handle.tell():
+                  handle.write("\n")
+              handle.write(summary_payload)
+          PY
+
+      - name: Upload training artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gh-full-training
+          path: runs

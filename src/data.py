@@ -22,6 +22,14 @@ try:
 except AttributeError:  # pragma: no cover - fallback for older Pillow
     RESAMPLE_BILINEAR = Image.BILINEAR  # type: ignore[attr-defined]
 
+try:
+    import cv2
+    from insightface.app import FaceAnalysis
+    from insightface.utils import face_align
+    INSIGHTFACE_AVAILABLE = True
+except ImportError:
+    INSIGHTFACE_AVAILABLE = False
+
 
 CLASS_NAMES: Tuple[str, ...] = (
     "angry",
@@ -52,6 +60,37 @@ class DatasetStats:
     mean: float
     std: float
     num_pixels: int
+
+
+@dataclass
+class InsightFaceConfig:
+    """Configuration for InsightFace face detection preprocessing.
+    
+    Attributes:
+        enabled: Whether to use InsightFace preprocessing.
+        det_size: Detection size tuple (height, width).
+        det_thresh: Detection confidence threshold.
+        model_pack: Model pack name (buffalo_l, buffalo_s, etc).
+        align_faces: Whether to align detected faces using landmarks.
+        expand_ratio: Ratio to expand bounding box (e.g., 1.1 = 10% expansion).
+    """
+    enabled: bool = False
+    det_size: Tuple[int, int] = (640, 640)
+    det_thresh: float = 0.5
+    model_pack: str = "buffalo_l"
+    align_faces: bool = True
+    expand_ratio: float = 1.1
+
+    def __post_init__(self) -> None:
+        """Validate parameters."""
+        if not (0.1 <= self.det_thresh <= 1.0):
+            raise ValueError(
+                f"det_thresh must be in [0.1, 1.0], got {self.det_thresh}"
+            )
+        if self.expand_ratio < 1.0:
+            raise ValueError(
+                f"expand_ratio must be >= 1.0, got {self.expand_ratio}"
+            )
 
 
 @dataclass
@@ -121,6 +160,7 @@ class DataModuleConfig:
         std: Optional precomputed dataset standard deviation.
         augment: If False, augmentation is skipped even for training.
         augmentation: Augmentation-specific configuration.
+        insightface: InsightFace-specific configuration.
         stats_cache_path: Optional path to cache statistics TOML.
     """
 
@@ -135,6 +175,9 @@ class DataModuleConfig:
     augmentation: AugmentationConfig = dataclasses.field(
         default_factory=AugmentationConfig
     )
+    insightface: InsightFaceConfig = dataclasses.field(
+        default_factory=InsightFaceConfig
+    )
     stats_cache_path: Optional[Path] = None
 
     def __post_init__(self) -> None:
@@ -142,6 +185,115 @@ class DataModuleConfig:
         self.data_dir = Path(self.data_dir)
         if self.stats_cache_path is not None:
             self.stats_cache_path = Path(self.stats_cache_path)
+
+
+def _initialize_insightface_detector(config: InsightFaceConfig) -> object | None:
+    """Initialize InsightFace detector or return None if unavailable."""
+    if not INSIGHTFACE_AVAILABLE:
+        return None
+    try:
+        app = FaceAnalysis(
+            name=config.model_pack,
+            allowed_modules=['detection'],
+            providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
+        )
+        app.prepare(ctx_id=0, det_size=config.det_size, det_thresh=config.det_thresh)
+        return app
+    except Exception as e:
+        print(f"Warning: InsightFace initialization failed: {e}")
+        return None
+
+
+def _extract_face_region(
+    image: np.ndarray,
+    detector: object,
+    config: InsightFaceConfig,
+) -> np.ndarray:
+    """Extract the largest detected face from an image.
+    
+    Args:
+        image: Input image as uint8 array with shape (H, W, 1).
+        detector: InsightFace detector instance.
+        config: InsightFace configuration.
+        
+    Returns:
+        Cropped face image or original if no face detected.
+    """
+    if detector is None or image.ndim != 3 or image.shape[2] != 1:
+        return image
+    
+    rgb_image = cv2.cvtColor(image[:, :, 0], cv2.COLOR_GRAY2BGR)
+    
+    try:
+        faces = detector.get(rgb_image)
+        if not faces:
+            return image
+        
+        largest_face = max(faces, key=lambda f: f.bbox[2] * f.bbox[3])
+        bbox = largest_face.bbox.astype(int)
+        x1, y1, x2, y2 = bbox[0], bbox[1], bbox[2], bbox[3]
+        
+        h, w = image.shape[0], image.shape[1]
+        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+        face_w, face_h = x2 - x1, y2 - y1
+        
+        new_w = int(face_w * config.expand_ratio)
+        new_h = int(face_h * config.expand_ratio)
+        
+        new_x1 = max(0, int(cx - new_w / 2))
+        new_y1 = max(0, int(cy - new_h / 2))
+        new_x2 = min(w, int(cx + new_w / 2))
+        new_y2 = min(h, int(cy + new_h / 2))
+        
+        cropped = image[new_y1:new_y2, new_x1:new_x2, :]
+        
+        if cropped.size == 0:
+            return image
+        
+        if config.align_faces and largest_face.kps is not None:
+            cropped_rgb = cv2.cvtColor(cropped[:, :, 0], cv2.COLOR_GRAY2BGR)
+            aligned = face_align.norm_crop(rgb_image, largest_face.kps, image_size=48)
+            aligned_gray = cv2.cvtColor(aligned, cv2.COLOR_BGR2GRAY)
+            return aligned_gray[:, :, None]
+        
+        return cv2.resize(
+            cropped,
+            (image.shape[1], image.shape[0]),
+            interpolation=cv2.INTER_LINEAR,
+        )
+    except Exception as e:
+        print(f"Warning: Face extraction failed: {e}")
+        return image
+
+
+def _load_image(
+    path: Path,
+    insightface_config: Optional[InsightFaceConfig] = None,
+    detector: Optional[object] = None,
+) -> np.ndarray:
+    """Load an image from disk with optional InsightFace preprocessing.
+    
+    Args:
+        path: Filesystem path to the image.
+        insightface_config: InsightFace configuration.
+        detector: Initialized InsightFace detector.
+        
+    Returns:
+        np.ndarray: Unsigned byte image with shape (H, W, 1).
+    """
+    with Image.open(path) as img:
+        img = img.convert("L")
+        arr = np.asarray(img, dtype=np.uint8)
+    arr = arr[:, :, None] if arr.ndim == 2 else arr
+    
+    if (
+        insightface_config
+        and insightface_config.enabled
+        and detector is not None
+    ):
+        arr = _extract_face_region(arr, detector, insightface_config)
+    
+    return arr
 
 
 class EmotionDataModule:
@@ -159,6 +311,10 @@ class EmotionDataModule:
         self._test_samples: list[Sample] = []
         self._stats: Optional[DatasetStats] = None
         self._class_weights: Optional[jnp.ndarray] = None
+        self._insightface_detector: Optional[object] = None
+        
+        if config.insightface.enabled:
+            self._insightface_detector = _initialize_insightface_detector(config.insightface)
 
     @property
     def stats(self) -> DatasetStats:
@@ -360,7 +516,11 @@ class EmotionDataModule:
             labels: list[int] = []
             for idx in batch_indices:
                 sample = samples[idx]
-                image = _load_image(sample.path)
+                image = _load_image(
+                    sample.path,
+                    insightface_config=self.config.insightface,
+                    detector=self._insightface_detector,
+                )
                 image = image.astype(np.float32) / 255.0
                 if augment and aug_cfg.enabled:
                     image = apply_augmentations(image, rng, aug_cfg)
@@ -619,22 +779,6 @@ def normalize_image(
     if mean is None or std is None:
         return image
     return (image - float(mean)) / float(std)
-
-
-def _load_image(path: Path) -> np.ndarray:
-    """Load an image from disk as a grayscale NumPy array.
-
-    Args:
-        path: Filesystem path to the image.
-
-    Returns:
-        np.ndarray: Unsigned byte image with shape ``(H, W, 1)``.
-    """
-    with Image.open(path) as img:
-        img = img.convert("L")
-        arr = np.asarray(img, dtype=np.uint8)
-    arr = arr[:, :, None] if arr.ndim == 2 else arr
-    return arr
 
 
 def _random_resized_crop(

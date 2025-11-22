@@ -1,0 +1,10 @@
+/var/lib/slurm/slurmd/job48283499/slurm_script: line 23: export: `=': not a valid identifier
+/var/lib/slurm/slurmd/job48283499/slurm_script: line 23: export: `/scratch/rra80/apptainer': not a valid identifier
+/var/lib/slurm/slurmd/job48283499/slurm_script: line 26: [!: command not found
+INFO:    underlay of /usr/bin/nvidia-smi required more than 50 (479) bind mounts
+15:4: not a valid test operator:  
+15:4: not a valid test operator: 13.0
+21:4: not a valid test operator: (
+21:4: not a valid test operator: 535.154.05
+/usr/bin/bash: line 3: uv: command not found
+/usr/bin/bash: line 4: uv: command not found

@@ -1,0 +1,13 @@
+Current git commit: 
+400e5b1e
+Using cached apptainer image
+Looking in links: /tmp/tmpxb6xqg32
+Processing /tmp/tmpxb6xqg32/pip-25.2-py3-none-any.whl
+Installing collected packages: pip
+Successfully installed pip-25.2
+Collecting uv
+  Downloading uv-0.9.10-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (11 kB)
+Downloading uv-0.9.10-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (21.4 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 21.4/21.4 MB 77.7 MB/s  0:00:00
+Installing collected packages: uv
+Successfully installed uv-0.9.10

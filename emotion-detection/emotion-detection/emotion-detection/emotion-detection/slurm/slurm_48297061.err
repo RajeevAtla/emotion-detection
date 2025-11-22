@@ -1,0 +1,7 @@
+/var/lib/slurm/slurmd/job48297061/slurm_script: line 27: git: command not found
+INFO:    underlay of /usr/bin/nvidia-persistenced required more than 50 (479) bind mounts
+15:4: not a valid test operator:  
+15:4: not a valid test operator: 13.0
+21:4: not a valid test operator: (
+21:4: not a valid test operator: 535.154.05
+/scratch/rra80/emotion-detection/.venv/bin/python: No module named pip

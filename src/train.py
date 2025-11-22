@@ -16,6 +16,10 @@ import numpy as np
 from flax import nnx
 from tensorboardX import SummaryWriter
 
+from src import distributed
+from jax.experimental import mesh_utils
+from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+
 from src import checkpointing
 from src.data import DataModuleConfig, EmotionDataModule
 from src.model import (
@@ -72,6 +76,8 @@ class TrainingConfig:
     frozen_stages: Tuple[int, ...] = ()
     pretrained_checkpoint: Optional[Path] = None
     resume_checkpoint: Optional[Path] = None
+    num_gpus: int = 1
+    distributed: bool = False
 
     def __post_init__(self) -> None:
         """Resolve path-like attributes immediately after initialization."""
@@ -95,7 +101,7 @@ class TrainState:
 
 
 def create_learning_rate_schedule(
-    config: TrainingConfig, steps_per_epoch: int
+    config: TrainingConfig, steps_per_epoch: int, global_batch_size: Optional[int] = None,
 ) -> optax.Schedule:
     """Build a learning rate schedule with warmup followed by cosine decay.
 
@@ -114,6 +120,9 @@ def create_learning_rate_schedule(
     decay_steps = max(1, total_steps - warmup_steps)
 
     peak_lr = config.learning_rate
+    if global_batch_size is not None and global_batch_size > 128:
+        scale_factor = global_batch_size / 128.0
+        peak_lr = peak_lr * (scale_factor ** 0.5)
     min_lr = config.min_learning_rate
     warmup_steps_f = float(warmup_steps)
     decay_steps_f = float(decay_steps)
@@ -503,8 +512,18 @@ def predict_batches(
     return jnp.concatenate(preds, axis=0), jnp.concatenate(labels, axis=0)
 
 
-def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
+def train_and_evaluate(config: TrainingConfig, mesh=None) -> TrainingSummary:
     """Run the training pipeline using the NNX-native state."""
+
+    num_devices = jax.device_count()
+    if num_devices > 1:
+        if mesh is None:
+            mesh = mesh_utils.create_device_mesh((num_devices,))
+
+    # Calculate global batch size
+    global_batch_size = config.batch_size * num_devices
+    local_batch_size = config.batch_size
+
     rng = jax.random.PRNGKey(config.seed)
     data_config = replace(config.data)
     data_module = EmotionDataModule(data_config)
@@ -548,7 +567,9 @@ def train_and_evaluate(config: TrainingConfig) -> TrainingSummary:
     best_epoch: Optional[int] = None
 
     for epoch in range(1, config.num_epochs + 1):
-        epoch_rng, rng = jax.random.split(rng)
+        print(f"\n===== Epoch {epoch}/{num_epochs} =====", flush=True)
+	print(f"Epoch {epoch}: loss={loss:.4f}, val_acc={val_acc:.4f}", flush=True)
+	epoch_rng, rng = jax.random.split(rng)
         epoch_seed = int(jax.random.randint(epoch_rng, (), 0, 2**31 - 1))
         train_iter = data_module.train_batches(
             rng_seed=epoch_seed,
