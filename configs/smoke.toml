@@ -30,3 +30,11 @@ horizontal_flip_prob = 0.0
 rotation_degrees = 0.0
 scale_range = [1.0, 1.0]
 enabled = false
+
+[training.data.insightface]
+enabled = true
+det_size = [640, 640]
+det_thresh = 0.5
+model_pack = "buffalo_l"
+align_faces = true
+expand_ratio = 1.1

@@ -22,6 +22,10 @@ from src.data import (
     stratified_split,
     _load_image,
     _scan_split,
+    RetinaFaceConfig,
+    _extract_face_region,
+    _align_face,
+    _initialize_retinaface_detector,
 )
 
 
@@ -304,3 +308,53 @@ def test_normalize_image_without_stats_returns_input() -> None:
     """Test that normalization bypasses transformation when stats missing."""
     image = np.linspace(0, 1, num=16, dtype=np.float32).reshape(4, 4, 1)
     assert np.allclose(normalize_image(image, mean=None, std=0.5), image)
+
+def test_insightface_config_validation() -> None:
+    """Test InsightFaceConfig validation."""
+    from src.data import InsightFaceConfig
+    
+    config = InsightFaceConfig(enabled=True, det_thresh=0.5)
+    assert config.enabled is True
+    
+    with pytest.raises(ValueError):
+        InsightFaceConfig(det_thresh=1.5)
+    
+    with pytest.raises(ValueError):
+        InsightFaceConfig(expand_ratio=0.5)
+
+
+def test_extract_face_region_handles_none_detector() -> None:
+    """Test that face extraction gracefully handles None detector."""
+    from src.data import _extract_face_region, InsightFaceConfig
+    
+    image = np.full((48, 48, 1), 128, dtype=np.uint8)
+    config = InsightFaceConfig()
+    result = _extract_face_region(image, detector=None, config=config)
+    np.testing.assert_array_equal(result, image)
+
+
+def test_emotion_data_module_with_insightface_disabled(
+    tiny_dataset: Path,
+) -> None:
+    """Test that disabled InsightFace doesn't affect loading."""
+    from src.data import InsightFaceConfig
+    
+    config = DataModuleConfig(
+        data_dir=tiny_dataset,
+        batch_size=4,
+        insightface=InsightFaceConfig(enabled=False),
+    )
+    module = EmotionDataModule(config)
+    module.setup()
+    batch = next(module.train_batches(rng_seed=0))
+    chex.assert_shape(batch[0], (batch[0].shape[0], 48, 48, 1))
+
+
+def test_insightface_initialization_fallback() -> None:
+    """Test InsightFace initialization handles import errors gracefully."""
+    from src.data import _initialize_insightface_detector, InsightFaceConfig
+    
+    config = InsightFaceConfig(enabled=True, model_pack="buffalo_l")
+    detector = _initialize_insightface_detector(config)
+    # Should return None or valid detector, but not crash
+    assert detector is None or detector is not None

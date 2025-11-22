@@ -18,7 +18,7 @@ import jax.numpy as jnp
 import numpy as np
 from pydantic import BaseModel, Field, field_validator
 
-from src.data import AugmentationConfig, DataModuleConfig
+from src.data import AugmentationConfig, DataModuleConfig, InsightFaceConfig
 from src.train import TrainingConfig, train_and_evaluate
 
 ConfigValue = Union[
@@ -154,6 +154,17 @@ class RuntimeAugmentationModel(BaseModel):
         return value
 
 
+class RuntimeInsightFaceModel(BaseModel):
+    """Schema describing InsightFace configuration."""
+
+    enabled: bool = False
+    det_size: Tuple[int, int] = (640, 640)
+    det_thresh: float = Field(0.5, ge=0.1, le=1.0)
+    model_pack: str = "buffalo_l"
+    align_faces: bool = True
+    expand_ratio: float = Field(1.1, ge=1.0)
+
+
 class RuntimeDataModel(BaseModel):
     """Schema describing dataset configuration."""
 
@@ -166,6 +177,7 @@ class RuntimeDataModel(BaseModel):
     std: Optional[float] = None
     augment: bool = True
     augmentation: Optional[RuntimeAugmentationModel] = None
+    insightface: Optional[RuntimeInsightFaceModel] = None
     stats_cache_path: Optional[Path] = None
 
 
@@ -236,6 +248,8 @@ def _build_dataclass(cls: type[T], raw: Mapping[str, ConfigValue]) -> T:
             kwargs[key] = Path(value) if value is not None else None
         elif key == "augmentation" and isinstance(value, Mapping):
             kwargs[key] = AugmentationConfig(**value)
+        elif key == "insightface" and isinstance(value, Mapping):
+            kwargs[key] = InsightFaceConfig(**value)
         else:
             kwargs[key] = value
     return cls(**kwargs)
@@ -290,6 +304,8 @@ def resolve_configs(args: argparse.Namespace) -> TrainingConfig:
     data_dict["batch_size"] = config_model.batch_size
     if data_dict.get("augmentation") is not None:
         data_dict["augmentation"] = data_dict["augmentation"]
+    if data_dict.get("insightface") is not None:
+        data_dict["insightface"] = data_dict["insightface"]
     data_config = _build_dataclass(DataModuleConfig, data_dict)
 
     training_config = TrainingConfig(

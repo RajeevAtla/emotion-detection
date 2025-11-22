@@ -8,6 +8,25 @@ on:
   pull_request:
 
 jobs:
+  multi-gpu-test:
+  runs-on: ubuntu-latest
+  if: contains(github.event.head_commit.message, '[multi-gpu]')
+  
+  steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        python-version: "3.13"
+
+    - name: Simulate multi-GPU (4 devices)
+      run: |
+        export XLA_FLAGS="--xla_force_host_platform_device_count=4"
+        uv sync
+        uv run pytest tests/test_distributed.py -v
+
   lint-test:
     runs-on: ubuntu-latest
     env:
