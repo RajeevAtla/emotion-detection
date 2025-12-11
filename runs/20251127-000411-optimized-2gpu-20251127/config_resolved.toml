@@ -1,0 +1,53 @@
+output_dir = "/home/vss54/emotion/emotion-detection/runs/20251127-000411-optimized-2gpu-20251127"
+model_depth = 34
+width_multiplier = 1
+dropout_rate = 0.1
+num_epochs = 80
+batch_size = 128
+learning_rate = 0.001
+min_learning_rate = 1e-05
+warmup_epochs = 5
+weight_decay = 0.0001
+gradient_accumulation_steps = 1
+label_smoothing = 0.1
+seed = 42
+log_every = 25
+log_to_console = true
+checkpoint_every = 5
+max_checkpoints = 5
+use_mixed_precision = true
+patience = 15
+freeze_stem = false
+freeze_classifier = false
+frozen_stages = []
+num_gpus = 1
+distributed = false
+
+[data]
+data_dir = "data_processed_my-experiment"
+batch_size = 128
+val_ratio = 0.1
+seed = 42
+drop_last = false
+augment = true
+
+[data.augmentation]
+horizontal_flip_prob = 0.5
+rotation_degrees = 15.0
+scale_range = [
+    0.9,
+    1.1,
+]
+elastic_blur_sigma = 0.0
+enabled = true
+
+[data.insightface]
+enabled = false
+det_size = [
+    640,
+    640,
+]
+det_thresh = 0.5
+model_pack = "buffalo_l"
+align_faces = true
+expand_ratio = 1.1

@@ -212,3 +212,9 @@ __marimo__/
 
 # checkpoint files
 runs/*/checkpoints/
+
+# slurm
+slurm/*
+
+# extra data
+data_processed_my-experiment/
