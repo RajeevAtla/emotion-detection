@@ -6,9 +6,9 @@ import dataclasses
 import math
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict
 
 import jax.numpy as jnp
 import numpy as np
@@ -18,9 +18,9 @@ from PIL import Image
 from scipy.ndimage import gaussian_filter
 
 try:
-    RESAMPLE_BILINEAR = Image.Resampling.BILINEAR  # type: ignore[attr-defined]
-except AttributeError:  # pragma: no cover - fallback for older Pillow
-    RESAMPLE_BILINEAR = Image.BILINEAR  # type: ignore[attr-defined]
+    RESAMPLE_BILINEAR = Image.Resampling.BILINEAR
+except AttributeError:
+    RESAMPLE_BILINEAR = Image.BILINEAR
 
 
 CLASS_NAMES: Tuple[str, ...] = (
@@ -32,7 +32,7 @@ CLASS_NAMES: Tuple[str, ...] = (
     "sad",
     "surprised",
 )
-CLASS_TO_INDEX: dict[str, int] = {
+CLASS_TO_INDEX: Dict[str, int] = {
     name: idx for idx, name in enumerate(CLASS_NAMES)
 }
 IMAGE_EXTENSIONS: Tuple[str, ...] = (".png", ".jpg", ".jpeg")
@@ -41,90 +41,63 @@ DEFAULT_STATS_FILENAME = "stats_train.toml"
 
 @dataclass(frozen=True)
 class DatasetStats:
-    """Dataset-level statistics used for normalization.
-
-    Attributes:
-        mean: Mean pixel intensity across the dataset in the [0, 1] range.
-        std: Standard deviation of pixel intensities.
-        num_pixels: Total number of pixels contributing to the statistics.
-    """
-
     mean: float
     std: float
     num_pixels: int
 
 
 @dataclass
+class DatasetConfig:
+    name: str
+    data_dir: str
+    weight: float = 1.0
+    enabled: bool = True
+
+
+@dataclass
 class AugmentationConfig:
-    """Configuration options controlling stochastic image augmentations.
-
-    Attributes:
-        horizontal_flip_prob: Probability of performing a horizontal flip.
-        rotation_degrees: Maximum absolute rotation in degrees.
-        scale_range: Inclusive range of random resized crop scales.
-        elastic_blur_sigma: Optional Gaussian blur sigma for elastic effect.
-        enabled: Whether augmentation is enabled.
-    """
-
     horizontal_flip_prob: float = 0.5
     rotation_degrees: float = 15.0
     scale_range: Tuple[float, float] = (0.9, 1.1)
-    elastic_blur_sigma: Optional[float] = None
+    brightness_range: Optional[Tuple[float, float]] = None
+    contrast_range: Optional[Tuple[float, float]] = None
+    gaussian_blur_prob: float = 0.0
+    gaussian_blur_sigma: float = 1.0
+    mixup_alpha: float = 0.0
+    cutmix_alpha: float = 0.0
+    cutmix_prob: float = 0.5
     enabled: bool = True
 
     def clamp(self) -> AugmentationConfig:
-        """Return a sanitized copy of the augmentation configuration.
-
-        Returns:
-            AugmentationConfig: Clamped augmentation configuration.
-        """
         lo, hi = self.scale_range
         lo = max(0.1, float(lo))
         hi = max(lo, float(hi))
         return AugmentationConfig(
-            horizontal_flip_prob=float(
-                np.clip(self.horizontal_flip_prob, 0.0, 1.0)
-            ),
+            horizontal_flip_prob=float(np.clip(self.horizontal_flip_prob, 0.0, 1.0)),
             rotation_degrees=float(max(0.0, self.rotation_degrees)),
             scale_range=(lo, hi),
-            elastic_blur_sigma=self.elastic_blur_sigma
-            if (self.elastic_blur_sigma or 0.0) > 0
-            else None,
+            brightness_range=self.brightness_range,
+            contrast_range=self.contrast_range,
+            gaussian_blur_prob=float(np.clip(self.gaussian_blur_prob, 0.0, 1.0)),
+            gaussian_blur_sigma=max(0.1, self.gaussian_blur_sigma),
+            mixup_alpha=max(0.0, self.mixup_alpha),
+            cutmix_alpha=max(0.0, self.cutmix_alpha),
+            cutmix_prob=float(np.clip(self.cutmix_prob, 0.0, 1.0)),
             enabled=self.enabled,
         )
 
 
 @dataclass(frozen=True)
 class Sample:
-    """Represents a single image example and its numeric label.
-
-    Attributes:
-        path: Filesystem path to the image file.
-        label: Integer label matching class index.
-    """
-
     path: Path
     label: int
+    dataset: str = "unknown"
 
 
 @dataclass
 class DataModuleConfig:
-    """Runtime configuration governing dataset preparation.
-
-    Attributes:
-        data_dir: Root directory containing train/test folders.
-        batch_size: Batch size used for loaders.
-        val_ratio: Fraction of training data reserved for validation.
-        seed: PRNG seed applied to deterministic operations.
-        drop_last: Whether to drop incomplete batches.
-        mean: Optional precomputed dataset mean.
-        std: Optional precomputed dataset standard deviation.
-        augment: If False, augmentation is skipped even for training.
-        augmentation: Augmentation-specific configuration.
-        stats_cache_path: Optional path to cache statistics TOML.
-    """
-
     data_dir: Path
+    datasets: List[DatasetConfig] = field(default_factory=list)
     batch_size: int = 128
     val_ratio: float = 0.1
     seed: int = 0
@@ -132,107 +105,136 @@ class DataModuleConfig:
     mean: Optional[float] = None
     std: Optional[float] = None
     augment: bool = True
-    augmentation: AugmentationConfig = dataclasses.field(
-        default_factory=AugmentationConfig
-    )
+    augmentation: AugmentationConfig = field(default_factory=AugmentationConfig)
     stats_cache_path: Optional[Path] = None
+    image_size: Tuple[int, int] = (48, 48)
 
     def __post_init__(self) -> None:
-        """Normalize path-like fields after dataclass initialization."""
         self.data_dir = Path(self.data_dir)
         if self.stats_cache_path is not None:
             self.stats_cache_path = Path(self.stats_cache_path)
+        if not self.datasets:
+            self.datasets = [DatasetConfig(name="fer2013", data_dir="fer2013", weight=1.0)]
+
+
+def _load_image(path: Path, target_size: Tuple[int, int] = (48, 48)) -> np.ndarray:
+    """Load image, convert to grayscale, and resize to target size."""
+    with Image.open(path) as img:
+        img = img.convert("L")
+        # Resize to target size if different
+        if img.size != target_size:
+            img = img.resize(target_size, resample=RESAMPLE_BILINEAR)
+        arr = np.asarray(img, dtype=np.uint8)
+    arr = arr[:, :, None] if arr.ndim == 2 else arr
+    return arr
 
 
 class EmotionDataModule:
-    """Loads, splits, and batches the emotion recognition dataset."""
-
     def __init__(self, config: DataModuleConfig) -> None:
-        """Initializes the data module with its configuration.
-
-        Args:
-            config: Data module configuration.
-        """
         self.config = config
-        self._train_samples: list[Sample] = []
-        self._val_samples: list[Sample] = []
-        self._test_samples: list[Sample] = []
+        self._train_samples: List[Sample] = []
+        self._val_samples: List[Sample] = []
+        self._test_samples: List[Sample] = []
         self._stats: Optional[DatasetStats] = None
         self._class_weights: Optional[jnp.ndarray] = None
+        self._sample_weights: Optional[np.ndarray] = None
+        self._dataset_info: Dict[str, Dict[str, int]] = {}
 
     @property
     def stats(self) -> DatasetStats:
-        """Returns dataset statistics computed during setup.
-
-        Returns:
-            DatasetStats: Mean and standard deviation values.
-
-        Raises:
-            RuntimeError: If setup has not been executed.
-        """
         if self._stats is None:
-            raise RuntimeError(
-                "EmotionDataModule.setup must be called before accessing stats."
-            )
+            raise RuntimeError("EmotionDataModule.setup must be called first.")
         return self._stats
 
     @property
     def class_weights(self) -> jnp.ndarray:
-        """Returns class-balanced weights derived from the training split.
-
-        Returns:
-            jnp.ndarray: Normalized class weights.
-
-        Raises:
-            RuntimeError: If setup has not been executed.
-        """
         if self._class_weights is None:
-            raise RuntimeError(
-                "EmotionDataModule.setup must be called before accessing class weights."
-            )
+            raise RuntimeError("EmotionDataModule.setup must be called first.")
         return self._class_weights
 
     def setup(self, force_recompute_stats: bool = False) -> None:
-        """Initializes dataset splits, statistics, and class weights.
-
-        Args:
-            force_recompute_stats: If True, recompute statistics even if cached.
-        """
         cfg = self.config
-        train_samples = _scan_split(cfg.data_dir, split="train")
-        test_samples = _scan_split(cfg.data_dir, split="test")
+        all_train_samples: List[Sample] = []
+        all_test_samples: List[Sample] = []
+        dataset_weights: Dict[str, float] = {}
 
-        train_indices, val_indices = stratified_split(
-            train_samples, cfg.val_ratio, cfg.seed
-        )
-        self._train_samples = [train_samples[i] for i in train_indices]
-        self._val_samples = [train_samples[i] for i in val_indices]
-        self._test_samples = test_samples
+        print("=" * 60)
+        print("Loading datasets...")
+        print("=" * 60)
 
-        stats_cache = (
-            cfg.stats_cache_path or cfg.data_dir / DEFAULT_STATS_FILENAME
-        )
-        if (
-            cfg.mean is not None
-            and cfg.std is not None
-            and not force_recompute_stats
-        ):
-            derived_stats = DatasetStats(
-                mean=float(cfg.mean), std=float(cfg.std), num_pixels=0
-            )
+        for ds_cfg in cfg.datasets:
+            if not ds_cfg.enabled:
+                print(f"  {ds_cfg.name}: DISABLED")
+                continue
+
+            ds_path = cfg.data_dir / ds_cfg.data_dir
+            if not ds_path.exists():
+                print(f"  {ds_cfg.name}: NOT FOUND at {ds_path}")
+                continue
+
+            train_samples = _scan_split(ds_path, split="train", dataset_name=ds_cfg.name)
+            test_samples = _scan_split(ds_path, split="test", dataset_name=ds_cfg.name)
+
+            self._dataset_info[ds_cfg.name] = {
+                "train": len(train_samples),
+                "test": len(test_samples),
+                "weight": ds_cfg.weight,
+            }
+
+            all_train_samples.extend(train_samples)
+            all_test_samples.extend(test_samples)
+            dataset_weights[ds_cfg.name] = ds_cfg.weight
+
+            print(f"  {ds_cfg.name}: {len(train_samples)} train, {len(test_samples)} test (weight={ds_cfg.weight})")
+
+        if not all_train_samples:
+            raise FileNotFoundError("No training samples found in any dataset.")
+
+        train_indices, val_indices = stratified_split(all_train_samples, cfg.val_ratio, cfg.seed)
+        self._train_samples = [all_train_samples[i] for i in train_indices]
+        self._val_samples = [all_train_samples[i] for i in val_indices]
+        self._test_samples = all_test_samples
+
+        self._sample_weights = self._compute_sample_weights(self._train_samples, dataset_weights)
+
+        stats_cache = cfg.stats_cache_path or cfg.data_dir / DEFAULT_STATS_FILENAME
+        if cfg.mean is not None and cfg.std is not None and not force_recompute_stats:
+            derived_stats = DatasetStats(mean=float(cfg.mean), std=float(cfg.std), num_pixels=0)
         else:
             derived_stats = compute_dataset_statistics(
-                self._train_samples,
-                cache_path=stats_cache,
-                force=force_recompute_stats,
+                self._train_samples, cache_path=stats_cache, force=force_recompute_stats,
+                image_size=cfg.image_size
             )
             cfg.mean = derived_stats.mean
             cfg.std = derived_stats.std
 
         self._stats = derived_stats
-        self._class_weights = compute_class_weights(
-            self._train_samples, len(CLASS_NAMES)
-        )
+        self._class_weights = compute_class_weights(self._train_samples, len(CLASS_NAMES))
+
+        print("-" * 60)
+        print(f"Total: {len(self._train_samples)} train, {len(self._val_samples)} val, {len(self._test_samples)} test")
+        print(f"Stats: mean={self._stats.mean:.4f}, std={self._stats.std:.4f}")
+        print("=" * 60)
+
+    def _compute_sample_weights(self, samples: List[Sample], dataset_weights: Dict[str, float]) -> np.ndarray:
+        if not dataset_weights:
+            return np.ones(len(samples), dtype=np.float32)
+
+        dataset_counts = defaultdict(int)
+        for s in samples:
+            dataset_counts[s.dataset] += 1
+
+        total_weight = sum(dataset_weights.values())
+        normalized_weights = {k: v / total_weight for k, v in dataset_weights.items()}
+
+        weights = np.zeros(len(samples), dtype=np.float32)
+        for i, s in enumerate(samples):
+            ds_weight = normalized_weights.get(s.dataset, 1.0)
+            ds_count = dataset_counts[s.dataset]
+            weights[i] = ds_weight / ds_count if ds_count > 0 else 1.0
+
+        weights = weights / weights.sum() * len(samples)
+        return weights
 
     def train_batches(
         self,
@@ -240,17 +242,8 @@ class EmotionDataModule:
         batch_size: Optional[int] = None,
         rng_seed: Optional[int] = None,
         drop_last: Optional[bool] = None,
+        use_weighted_sampling: bool = True,
     ) -> Iterator[Tuple[jnp.ndarray, jnp.ndarray]]:
-        """Yield normalized batches for the training split.
-
-        Args:
-            batch_size: Optional override for batch size.
-            rng_seed: Seed for shuffle and augmentation randomness.
-            drop_last: Optional override for dropping incomplete batches.
-
-        Returns:
-            Iterator[Tuple[jnp.ndarray, jnp.ndarray]]: Batched images and labels.
-        """
         return self._iter_batches(
             self._train_samples,
             batch_size=batch_size,
@@ -258,6 +251,7 @@ class EmotionDataModule:
             rng_seed=rng_seed,
             shuffle=True,
             drop_last=drop_last,
+            sample_weights=self._sample_weights if use_weighted_sampling else None,
         )
 
     def val_batches(
@@ -267,16 +261,6 @@ class EmotionDataModule:
         rng_seed: Optional[int] = None,
         drop_last: Optional[bool] = None,
     ) -> Iterator[Tuple[jnp.ndarray, jnp.ndarray]]:
-        """Yield normalized batches for the validation split.
-
-        Args:
-            batch_size: Optional override for batch size.
-            rng_seed: Seed controlling deterministic iteration order.
-            drop_last: Optional override for dropping incomplete batches.
-
-        Returns:
-            Iterator[Tuple[jnp.ndarray, jnp.ndarray]]: Batched images and labels.
-        """
         return self._iter_batches(
             self._val_samples,
             batch_size=batch_size,
@@ -293,16 +277,6 @@ class EmotionDataModule:
         rng_seed: Optional[int] = None,
         drop_last: Optional[bool] = None,
     ) -> Iterator[Tuple[jnp.ndarray, jnp.ndarray]]:
-        """Yield normalized batches for the test split.
-
-        Args:
-            batch_size: Optional override for batch size.
-            rng_seed: Seed controlling deterministic iteration order.
-            drop_last: Optional override for dropping incomplete batches.
-
-        Returns:
-            Iterator[Tuple[jnp.ndarray, jnp.ndarray]]: Batched images and labels.
-        """
         return self._iter_batches(
             self._test_samples,
             batch_size=batch_size,
@@ -321,67 +295,51 @@ class EmotionDataModule:
         rng_seed: Optional[int],
         shuffle: bool,
         drop_last: Optional[bool],
+        sample_weights: Optional[np.ndarray] = None,
     ) -> Iterator[Tuple[jnp.ndarray, jnp.ndarray]]:
-        """Internal helper that batches and normalizes a sample collection.
-
-        Args:
-            samples: Sequence of Sample instances to iterate.
-            batch_size: Effective batch size for iteration.
-            augment: Whether to apply stochastic augmentation.
-            rng_seed: Seed for deterministic shuffling/augmentations.
-            shuffle: Whether to shuffle sample indices.
-            drop_last: Whether to drop incomplete final batch.
-
-        Returns:
-            Iterator[Tuple[jnp.ndarray, jnp.ndarray]]: Batched tensors.
-        """
         if not samples:
             return iter(())
 
         batch_size = batch_size or self.config.batch_size
-        drop_last = (
-            drop_last if drop_last is not None else self.config.drop_last
-        )
+        drop_last = drop_last if drop_last is not None else self.config.drop_last
 
-        rng = np.random.default_rng(
-            rng_seed if rng_seed is not None else self.config.seed
-        )
-        indices = np.arange(len(samples))
-        if shuffle:
-            rng.shuffle(indices)
+        rng = np.random.default_rng(rng_seed if rng_seed is not None else self.config.seed)
+
+        if sample_weights is not None and shuffle:
+            probs = sample_weights / sample_weights.sum()
+            indices = rng.choice(len(samples), size=len(samples), replace=True, p=probs)
+        else:
+            indices = np.arange(len(samples))
+            if shuffle:
+                rng.shuffle(indices)
 
         aug_cfg = self.config.augmentation.clamp()
+
         for start in range(0, len(indices), batch_size):
             batch_indices = indices[start : start + batch_size]
             if len(batch_indices) < batch_size and drop_last:
                 continue
 
-            images: list[np.ndarray] = []
-            labels: list[int] = []
+            images: List[np.ndarray] = []
+            labels: List[int] = []
+
             for idx in batch_indices:
                 sample = samples[idx]
-                image = _load_image(sample.path)
+                image = _load_image(sample.path, target_size=self.config.image_size)
                 image = image.astype(np.float32) / 255.0
+
                 if augment and aug_cfg.enabled:
                     image = apply_augmentations(image, rng, aug_cfg)
-                image = normalize_image(
-                    image, self.config.mean, self.config.std
-                )
+
+                image = normalize_image(image, self.config.mean, self.config.std)
                 images.append(image)
                 labels.append(sample.label)
 
-            batch_images = jnp.asarray(
-                np.stack(images, axis=0), dtype=jnp.float32
-            )
+            batch_images = jnp.asarray(np.stack(images, axis=0), dtype=jnp.float32)
             batch_labels = jnp.asarray(np.array(labels, dtype=np.int32))
             yield batch_images, batch_labels
 
-    def split_counts(self) -> dict[str, dict[str, int]]:
-        """Return class distributions for each split.
-
-        Returns:
-            dict[str, dict[str, int]]: Mapping of split names to class counts.
-        """
+    def split_counts(self) -> Dict[str, Dict[str, int]]:
         return {
             "train": compute_class_distribution(self._train_samples),
             "val": compute_class_distribution(self._val_samples),
@@ -389,36 +347,23 @@ class EmotionDataModule:
         }
 
 
-def _scan_split(data_dir: Path, *, split: str) -> list[Sample]:
-    """Scan a dataset split directory and collect samples.
-
-    Args:
-        data_dir: Root dataset directory.
-        split: Split name (e.g., ``"train"`` or ``"test"``).
-
-    Returns:
-        list[Sample]: Collected samples for the split.
-
-    Raises:
-        FileNotFoundError: If the split directory does not exist.
-        ValueError: If an unexpected class subdirectory is encountered.
-    """
+def _scan_split(data_dir: Path, *, split: str, dataset_name: str = "unknown") -> List[Sample]:
     split_dir = data_dir / split
     if not split_dir.exists():
-        raise FileNotFoundError(f"Expected split directory at {split_dir}")
+        return []
 
-    samples: list[Sample] = []
+    samples: List[Sample] = []
     for class_dir in sorted(split_dir.iterdir()):
         if not class_dir.is_dir():
             continue
         class_name = class_dir.name.lower()
         if class_name not in CLASS_TO_INDEX:
-            raise ValueError(f"Unrecognized class directory: {class_name}")
+            continue
         label = CLASS_TO_INDEX[class_name]
         for path in sorted(class_dir.iterdir()):
             if path.suffix.lower() not in IMAGE_EXTENSIONS:
                 continue
-            samples.append(Sample(path=path, label=label))
+            samples.append(Sample(path=path, label=label, dataset=dataset_name))
     return samples
 
 
@@ -426,31 +371,20 @@ def stratified_split(
     samples: Sequence[Sample],
     val_ratio: float,
     seed: int,
-) -> Tuple[list[int], list[int]]:
-    """Create stratified train and validation index lists.
-
-    Args:
-        samples: Sequence of samples within the training split.
-        val_ratio: Desired validation ratio (clamped to [0, 0.5]).
-        seed: Random seed used when shuffling indices.
-
-    Returns:
-        Tuple[list[int], list[int]]: Training indices, validation indices.
-    """
+) -> Tuple[List[int], List[int]]:
     if not samples:
         return [], []
     val_ratio = max(0.0, min(0.5, float(val_ratio)))
     if val_ratio == 0.0:
-        indices = list(range(len(samples)))
-        return indices, []
+        return list(range(len(samples))), []
 
     rng = np.random.default_rng(seed)
-    per_class: dict[int, list[int]] = defaultdict(list)
+    per_class: Dict[int, List[int]] = defaultdict(list)
     for idx, sample in enumerate(samples):
         per_class[sample.label].append(idx)
 
-    train_indices: list[int] = []
-    val_indices: list[int] = []
+    train_indices: List[int] = []
+    val_indices: List[int] = []
     for label, idxs in per_class.items():
         idxs = idxs.copy()
         rng.shuffle(idxs)
@@ -467,33 +401,14 @@ def stratified_split(
     return train_indices, val_indices
 
 
-def compute_class_distribution(samples: Sequence[Sample]) -> dict[str, int]:
-    """Count the number of samples per class.
-
-    Args:
-        samples: Sequence of samples to count.
-
-    Returns:
-        dict[str, int]: Mapping from class name to sample count.
-    """
+def compute_class_distribution(samples: Sequence[Sample]) -> Dict[str, int]:
     counts = {name: 0 for name in CLASS_NAMES}
     for sample in samples:
         counts[CLASS_NAMES[sample.label]] += 1
     return counts
 
 
-def compute_class_weights(
-    samples: Sequence[Sample], num_classes: int
-) -> jnp.ndarray:
-    """Derive class-balanced weights for loss scaling.
-
-    Args:
-        samples: Sequence of training samples.
-        num_classes: Total number of classes.
-
-    Returns:
-        jnp.ndarray: Normalized class weights.
-    """
+def compute_class_weights(samples: Sequence[Sample], num_classes: int) -> jnp.ndarray:
     counts = np.zeros(num_classes, dtype=np.float64)
     for sample in samples:
         counts[sample.label] += 1
@@ -508,17 +423,8 @@ def compute_dataset_statistics(
     *,
     cache_path: Optional[Path] = None,
     force: bool = False,
+    image_size: Tuple[int, int] = (48, 48),
 ) -> DatasetStats:
-    """Compute or load normalization statistics for a sample collection.
-
-    Args:
-        samples: Sequence of samples contributing to statistics.
-        cache_path: Optional TOML cache to read/write.
-        force: If True, recompute statistics ignoring any cache.
-
-    Returns:
-        DatasetStats: Mean, standard deviation, and pixel count.
-    """
     if cache_path is not None and cache_path.exists() and not force:
         with cache_path.open("rb") as fh:
             data = tomllib.load(fh)
@@ -532,7 +438,7 @@ def compute_dataset_statistics(
     pixel_sq_sum = 0.0
     total_pixels = 0
     for sample in samples:
-        image = _load_image(sample.path)
+        image = _load_image(sample.path, target_size=image_size)
         arr = image.astype(np.float64) / 255.0
         pixel_sum += float(arr.sum())
         pixel_sq_sum += float(np.square(arr).sum())
@@ -541,15 +447,11 @@ def compute_dataset_statistics(
     mean = pixel_sum / total_pixels
     variance = max(pixel_sq_sum / total_pixels - mean**2, 1e-12)
     std = math.sqrt(variance)
-    stats = DatasetStats(
-        mean=float(mean), std=float(std), num_pixels=int(total_pixels)
-    )
+    stats = DatasetStats(mean=float(mean), std=float(std), num_pixels=int(total_pixels))
 
     if cache_path is not None:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache_path.write_text(
-            tomli_w.dumps(dataclasses.asdict(stats)), encoding="utf-8"
-        )
+        cache_path.write_text(tomli_w.dumps(dataclasses.asdict(stats)), encoding="utf-8")
 
     return stats
 
@@ -559,44 +461,36 @@ def apply_augmentations(
     rng: np.random.Generator,
     config: AugmentationConfig,
 ) -> np.ndarray:
-    """Apply stochastic augmentations to a single image sample.
-
-    Args:
-        image: Input image array shaped ``(H, W, C)`` with ``C=1``.
-        rng: NumPy random generator controlling augmentation.
-        config: Augmentation configuration to apply.
-
-    Returns:
-        np.ndarray: Augmented image array.
-    """
     aug_cfg = config.clamp()
     augmented = image
 
     if aug_cfg.scale_range is not None:
         augmented = _random_resized_crop(augmented, rng, aug_cfg.scale_range)
 
-    if (
-        aug_cfg.horizontal_flip_prob > 0.0
-        and rng.random() < aug_cfg.horizontal_flip_prob
-    ):
+    if aug_cfg.horizontal_flip_prob > 0.0 and rng.random() < aug_cfg.horizontal_flip_prob:
         augmented = augmented[:, ::-1, :]
 
     if aug_cfg.rotation_degrees > 0.0:
-        angle = float(
-            rng.uniform(-aug_cfg.rotation_degrees, aug_cfg.rotation_degrees)
-        )
+        angle = float(rng.uniform(-aug_cfg.rotation_degrees, aug_cfg.rotation_degrees))
         if abs(angle) > 1e-3:
             rotated = _rotate_image(augmented[..., 0], angle)
             augmented = rotated[..., None]
 
-    if aug_cfg.elastic_blur_sigma is not None:
+    if aug_cfg.brightness_range is not None:
+        lo, hi = aug_cfg.brightness_range
+        factor = rng.uniform(lo, hi)
+        augmented = augmented * factor
+
+    if aug_cfg.contrast_range is not None:
+        lo, hi = aug_cfg.contrast_range
+        factor = rng.uniform(lo, hi)
+        mean_val = augmented.mean()
+        augmented = (augmented - mean_val) * factor + mean_val
+
+    if aug_cfg.gaussian_blur_prob > 0.0 and rng.random() < aug_cfg.gaussian_blur_prob:
         augmented = gaussian_filter(
             augmented,
-            sigma=(
-                aug_cfg.elastic_blur_sigma,
-                aug_cfg.elastic_blur_sigma,
-                0.0,
-            ),
+            sigma=(aug_cfg.gaussian_blur_sigma, aug_cfg.gaussian_blur_sigma, 0.0),
             mode="reflect",
         )
 
@@ -606,35 +500,9 @@ def apply_augmentations(
 def normalize_image(
     image: np.ndarray, mean: Optional[float], std: Optional[float]
 ) -> np.ndarray:
-    """Normalize image tensor by mean and standard deviation.
-
-    Args:
-        image: Image array with values in [0, 1].
-        mean: Dataset mean or ``None`` to skip normalization.
-        std: Dataset standard deviation or ``None`` to skip normalization.
-
-    Returns:
-        np.ndarray: Normalized image array.
-    """
     if mean is None or std is None:
         return image
     return (image - float(mean)) / float(std)
-
-
-def _load_image(path: Path) -> np.ndarray:
-    """Load an image from disk as a grayscale NumPy array.
-
-    Args:
-        path: Filesystem path to the image.
-
-    Returns:
-        np.ndarray: Unsigned byte image with shape ``(H, W, 1)``.
-    """
-    with Image.open(path) as img:
-        img = img.convert("L")
-        arr = np.asarray(img, dtype=np.uint8)
-    arr = arr[:, :, None] if arr.ndim == 2 else arr
-    return arr
 
 
 def _random_resized_crop(
@@ -642,18 +510,8 @@ def _random_resized_crop(
     rng: np.random.Generator,
     scale_range: Tuple[float, float],
 ) -> np.ndarray:
-    """Perform a random resized crop similar to torchvision implementation.
-
-    Args:
-        image: Input single-channel image array.
-        rng: NumPy random generator.
-        scale_range: Inclusive scale factor range to sample from.
-
-    Returns:
-        np.ndarray: Cropped (and possibly rescaled) image.
-    """
     h, w, c = image.shape
-    assert c == 1, "Random resized crop assumes single-channel images."
+    assert c == 1
 
     scale_min, scale_max = scale_range
     area = float(h * w)
@@ -696,15 +554,6 @@ def _random_resized_crop(
 
 
 def _rotate_image(image: np.ndarray, angle: float) -> np.ndarray:
-    """Rotate a single-channel image around its center.
-
-    Args:
-        image: 2D image array with values in [0, 1].
-        angle: Rotation angle in degrees.
-
-    Returns:
-        np.ndarray: Rotated image array.
-    """
     pil_img = Image.fromarray((np.clip(image, 0.0, 1.0) * 255).astype(np.uint8))
     rotated = pil_img.rotate(angle, resample=RESAMPLE_BILINEAR, fillcolor=0)
     return np.asarray(rotated, dtype=np.float32) / 255.0

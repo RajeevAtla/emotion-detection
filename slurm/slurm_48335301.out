@@ -1,0 +1,17 @@
+Job started at: Fri Nov 21 11:15:15 EST 2025
+apptainer version 1.2.5-1.el7
+Current git commit: 
+93323f1a
+Using cached apptainer image
+Container started
+no checksums to verify
+installing to /home/vss54/.local/bin
+  uv
+  uvx
+everything's installed!
+uv installed!
+uv 0.9.11
+=== Step 1: Installing opencv-python-headless ===
+=== Step 2: Syncing base dependencies ===
+=== Step 3: Installing InsightFace and ONNX Runtime ===
+Job completed at: Fri Nov 21 11:15:30 EST 2025

@@ -1,0 +1,9 @@
+INFO:    underlay of /usr/bin/nvidia-smi required more than 50 (479) bind mounts
+15:4: not a valid test operator:  
+15:4: not a valid test operator: 13.0
+21:4: not a valid test operator: (
+21:4: not a valid test operator: 535.154.05
+installer: -c: line 16: syntax error: unexpected end of file
+/var/lib/slurm/slurmd/job48336010/slurm_script: line 66: ignore: command not found
+/var/lib/slurm/slurmd/job48336010/slurm_script: line 71: syntax error near unexpected token `fi'
+/var/lib/slurm/slurmd/job48336010/slurm_script: line 71: `  fi'

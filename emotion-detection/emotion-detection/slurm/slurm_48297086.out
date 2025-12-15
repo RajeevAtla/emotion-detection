@@ -1,0 +1,67 @@
+Wed Nov 19 00:25:38 2025       
++---------------------------------------------------------------------------------------+
+| NVIDIA-SMI 535.154.05             Driver Version: 535.154.05   CUDA Version: 12.2     |
+|-----------------------------------------+----------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |         Memory-Usage | GPU-Util  Compute M. |
+|                                         |                      |               MIG M. |
+|=========================================+======================+======================|
+|   0  NVIDIA A100-PCIE-40GB          On  | 00000000:06:00.0 Off |                    0 |
+| N/A   31C    P0              30W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+|   1  NVIDIA A100-PCIE-40GB          On  | 00000000:2F:00.0 Off |                    0 |
+| N/A   31C    P0              31W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+|   2  NVIDIA A100-PCIE-40GB          On  | 00000000:86:00.0 Off |                    0 |
+| N/A   30C    P0              32W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+|   3  NVIDIA A100-PCIE-40GB          On  | 00000000:D8:00.0 Off |                    0 |
+| N/A   29C    P0              31W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+                                                                                         
++---------------------------------------------------------------------------------------+
+| Processes:                                                                            |
+|  GPU   GI   CI        PID   Type   Process name                            GPU Memory |
+|        ID   ID                                                             Usage      |
+|=======================================================================================|
+|  No running processes found                                                           |
++---------------------------------------------------------------------------------------+
+apptainer version 1.2.5-1.el7
+Current git commit: 
+29e001ba
+Using cached apptainer image
+.
+..
+.git
+.github
+.gitignore
+.venv
+LICENSE
+README.md
+configs
+data
+gpu_run.sbatch
+jax_25.10-py3.sif
+pyproject.toml
+runs
+scripts
+slurm
+src
+tests
+uv.lock
+Python 3.12.3
+/usr/bin/python
+no checksums to verify
+installing to /home/rra80/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)

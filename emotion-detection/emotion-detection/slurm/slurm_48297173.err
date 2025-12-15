@@ -1,0 +1,2 @@
+/var/lib/slurm/slurmd/job48297173/slurm_script: line 60: syntax error near unexpected token `jax.devices'
+/var/lib/slurm/slurmd/job48297173/slurm_script: line 60: `  uv run python -c "import jax; print(jax.devices())"'

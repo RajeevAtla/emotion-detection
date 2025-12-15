@@ -1,0 +1,69 @@
+Job started at: Wed Nov 19 10:52:39 EST 2025
+apptainer version 1.2.5-1.el7
+Current git commit: 
+93323f1a
+Cached apptainer image not found, pulling new one
+Container started
+no checksums to verify
+installing to /home/vss54/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+uv installed!
+uv 0.9.10
+Wed Nov 19 11:00:05 2025       
++---------------------------------------------------------------------------------------+
+| NVIDIA-SMI 535.154.05             Driver Version: 535.154.05   CUDA Version: 13.0     |
+|-----------------------------------------+----------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |         Memory-Usage | GPU-Util  Compute M. |
+|                                         |                      |               MIG M. |
+|=========================================+======================+======================|
+|   0  NVIDIA A100-PCIE-40GB          On  | 00000000:17:00.0 Off |                    0 |
+| N/A   33C    P0              37W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+|   1  NVIDIA A100-PCIE-40GB          On  | 00000000:31:00.0 Off |                    0 |
+| N/A   32C    P0              35W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+|   2  NVIDIA A100-PCIE-40GB          On  | 00000000:B1:00.0 Off |                    0 |
+| N/A   31C    P0              36W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+|   3  NVIDIA A100-PCIE-40GB          On  | 00000000:CA:00.0 Off |                    0 |
+| N/A   32C    P0              39W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+                                                                                         
++---------------------------------------------------------------------------------------+
+| Processes:                                                                            |
+|  GPU   GI   CI        PID   Type   Process name                            GPU Memory |
+|        ID   ID                                                             Usage      |
+|=======================================================================================|
+|  No running processes found                                                           |
++---------------------------------------------------------------------------------------+
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2025 NVIDIA Corporation
+Built on Wed_Aug_20_01:58:59_PM_PDT_2025
+Cuda compilation tools, release 13.0, V13.0.88
+Build cuda_13.0.r13.0/compiler.36424714_0
+[CudaDevice(id=0), CudaDevice(id=1)]
+Final train loss:     0.0313
+Final train accuracy: 0.8112
+Final val loss:       1.0563
+Final val accuracy:   0.6483
+Final val F1: 0.6494
+Final val macro F1: 0.6156
+Test accuracy:         0.2692
+Test F1: 0.2692
+Test macro F1: 0.2678
+Best epoch:            24
+Best checkpoint:       /home/vss54/emotion/emotion-detection/runs/20251119-110026-2-gpu-run-full/checkpoints/epoch_0024
+Artifacts stored in /home/vss54/emotion/emotion-detection/runs/20251119-110026-2-gpu-run-full
+Job completed at: Wed Nov 19 13:27:18 EST 2025

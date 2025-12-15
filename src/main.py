@@ -9,7 +9,7 @@ import random
 from datetime import datetime
 from pathlib import Path
 from collections.abc import Mapping, Sequence
-from typing import Optional, Tuple, TypeVar, Union, cast
+from typing import Optional, Tuple, TypeVar, Union, cast, List
 
 import tomli_w
 import tomllib
@@ -18,8 +18,8 @@ import jax.numpy as jnp
 import numpy as np
 from pydantic import BaseModel, Field, field_validator
 
-from src.data import AugmentationConfig, DataModuleConfig
-from src.train import TrainingConfig, train_and_evaluate
+from src.data import AugmentationConfig, DataModuleConfig, DatasetConfig
+from src.train_multi_gpu import TrainingConfig, train_and_evaluate
 
 ConfigValue = Union[
     str,
@@ -37,113 +37,60 @@ T = TypeVar("T")
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for the training entrypoint.
-
-    Returns:
-        argparse.Namespace: Parsed CLI options.
-    """
-    parser = argparse.ArgumentParser(
-        description="Emotion detection training entrypoint."
-    )
-    parser.add_argument(
-        "--config",
-        type=Path,
-        help="Path to a TOML configuration file describing data/model/training settings.",
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        help="Optional override for run output directory (defaults to config or ./runs).",
-    )
-    parser.add_argument(
-        "--resume",
-        type=Path,
-        help="Path to checkpoint directory to resume from.",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        help="Override for random seed applied to data and training config.",
-    )
-    parser.add_argument(
-        "--num-epochs",
-        type=int,
-        help="Override for number of training epochs.",
-    )
-    parser.add_argument(
-        "--experiment-name",
-        type=str,
-        help="Optional name appended to output directory for easier identification.",
-    )
+    parser = argparse.ArgumentParser(description="Emotion detection training entrypoint.")
+    parser.add_argument("--config", type=Path, help="Path to TOML config file.")
+    parser.add_argument("--output-dir", type=Path, help="Override for output directory.")
+    parser.add_argument("--resume", type=Path, help="Path to checkpoint to resume from.")
+    parser.add_argument("--seed", type=int, help="Override for random seed.")
+    parser.add_argument("--num-epochs", type=int, help="Override for number of epochs.")
+    parser.add_argument("--experiment-name", type=str, help="Name appended to output dir.")
     return parser.parse_args()
 
 
 def load_config(path: Path | None) -> dict[str, ConfigValue]:
-    """Load a TOML configuration file if provided.
-
-    Args:
-        path: Path to the TOML file or ``None``.
-
-    Returns:
-        dict[str, ConfigValue]: Parsed configuration dictionary.
-
-    Raises:
-        FileNotFoundError: If ``path`` does not exist.
-        ValueError: If the file cannot be parsed or is unsupported.
-    """
     if path is None:
         return {}
     if not path.exists():
         raise FileNotFoundError(f"Config file not found at {path}")
     suffix = path.suffix.lower()
     if suffix not in {".toml", ".tml"}:
-        raise ValueError(
-            f"Unsupported config format for {path}. Expected a .toml extension."
-        )
+        raise ValueError(f"Unsupported config format for {path}. Expected .toml")
     with path.open("rb") as fh:
         try:
             loaded = tomllib.load(fh)
         except tomllib.TOMLDecodeError as exc:
-            raise ValueError(
-                f"Failed to parse TOML config at {path}: {exc}"
-            ) from exc
+            raise ValueError(f"Failed to parse TOML config at {path}: {exc}") from exc
     if not isinstance(loaded, Mapping):
-        raise ValueError(
-            f"Config file {path} must define a mapping at the top level."
-        )
+        raise ValueError(f"Config file {path} must define a mapping at the top level.")
     training_section = loaded.get("training")
     if not isinstance(training_section, Mapping):
-        raise ValueError(
-            "Config file must provide a top-level [training] table."
-        )
+        raise ValueError("Config file must provide a top-level [training] table.")
     return cast(dict[str, ConfigValue], dict(training_section))
 
 
-class RuntimeAugmentationModel(BaseModel):
-    """Schema describing augmentation-related configuration."""
+class RuntimeDatasetModel(BaseModel):
+    name: str
+    data_dir: str
+    weight: float = Field(1.0, ge=0.0)
+    enabled: bool = True
 
+
+class RuntimeAugmentationModel(BaseModel):
     horizontal_flip_prob: float = Field(0.5, ge=0.0, le=1.0)
     rotation_degrees: float = Field(15.0, ge=0.0)
     scale_range: Tuple[float, float] = (0.9, 1.1)
-    elastic_blur_sigma: Optional[float] = Field(None, ge=0.0)
+    brightness_range: Optional[Tuple[float, float]] = None
+    contrast_range: Optional[Tuple[float, float]] = None
+    gaussian_blur_prob: float = Field(0.0, ge=0.0, le=1.0)
+    gaussian_blur_sigma: float = Field(1.0, ge=0.0)
+    mixup_alpha: float = Field(0.0, ge=0.0)
+    cutmix_alpha: float = Field(0.0, ge=0.0)
+    cutmix_prob: float = Field(0.5, ge=0.0, le=1.0)
     enabled: bool = True
 
     @field_validator("scale_range")
     @classmethod
-    def validate_scale_range(
-        cls, value: Tuple[float, float]
-    ) -> Tuple[float, float]:
-        """Validate that the scale range is positive and ordered.
-
-        Args:
-            value: Tuple containing the minimum and maximum scale factors.
-
-        Returns:
-            Tuple[float, float]: Sanitized scale range.
-
-        Raises:
-            ValueError: If the tuple is not length two, non-positive, or inverted.
-        """
+    def validate_scale_range(cls, value: Tuple[float, float]) -> Tuple[float, float]:
         if len(value) != 2:
             raise ValueError("scale_range must contain two values (min, max).")
         lo, hi = value
@@ -155,9 +102,8 @@ class RuntimeAugmentationModel(BaseModel):
 
 
 class RuntimeDataModel(BaseModel):
-    """Schema describing dataset configuration."""
-
     data_dir: Path
+    datasets: List[RuntimeDatasetModel] = []
     batch_size: Optional[int] = Field(None, gt=0)
     val_ratio: float = Field(0.1, ge=0.0, lt=1.0)
     seed: int = 0
@@ -170,8 +116,6 @@ class RuntimeDataModel(BaseModel):
 
 
 class RuntimeTrainingModel(BaseModel):
-    """Schema describing top-level training configuration."""
-
     data: RuntimeDataModel
     output_dir: Optional[Path] = None
     model_depth: int = Field(34, ge=1)
@@ -201,48 +145,12 @@ class RuntimeTrainingModel(BaseModel):
     @field_validator("frozen_stages")
     @classmethod
     def validate_stages(cls, value: Tuple[int, ...]) -> Tuple[int, ...]:
-        """Ensure that frozen stage indices are positive.
-
-        Args:
-            value: Tuple of stage indices requested for freezing.
-
-        Returns:
-            Tuple[int, ...]: The validated stage tuple.
-
-        Raises:
-            ValueError: If any value is less than one.
-        """
         if any(stage < 1 for stage in value):
             raise ValueError("frozen_stages must contain positive integers.")
         return value
 
 
-def _build_dataclass(cls: type[T], raw: Mapping[str, ConfigValue]) -> T:
-    """Build a dataclass instance from a raw mapping.
-
-    Args:
-        cls: Dataclass type to instantiate.
-        raw: Mapping of field names to values.
-
-    Returns:
-        T: Instantiated dataclass of the requested type.
-    """
-    field_names = {field.name for field in dataclasses.fields(cls)}
-    kwargs: dict[str, object] = {}
-    for key, value in raw.items():
-        if key not in field_names:
-            continue
-        if key.endswith("dir") or key.endswith("path"):
-            kwargs[key] = Path(value) if value is not None else None
-        elif key == "augmentation" and isinstance(value, Mapping):
-            kwargs[key] = AugmentationConfig(**value)
-        else:
-            kwargs[key] = value
-    return cls(**kwargs)
-
-
 def resolve_configs(args: argparse.Namespace) -> TrainingConfig:
-    """Resolve CLI arguments and configuration into ``TrainingConfig``."""
     raw_config = load_config(args.config)
 
     payload: dict[str, object] = dict(raw_config)
@@ -272,25 +180,55 @@ def resolve_configs(args: argparse.Namespace) -> TrainingConfig:
     output_root = args.output_dir or config_model.output_dir or Path("runs")
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     experiment_suffix = args.experiment_name or config_model.experiment_name
-    run_name = (
-        timestamp
-        if experiment_suffix is None
-        else f"{timestamp}-{experiment_suffix}"
-    )
+    run_name = timestamp if experiment_suffix is None else f"{timestamp}-{experiment_suffix}"
     output_dir = (Path(output_root) / run_name).resolve()
 
-    training_seed = (
-        args.seed
-        if args.seed is not None
-        else config_model.seed or config_model.data.seed
-    )
+    training_seed = args.seed if args.seed is not None else config_model.seed or config_model.data.seed
 
-    data_dict = cast(dict[str, ConfigValue], config_model.data.model_dump())
-    data_dict["seed"] = training_seed
-    data_dict["batch_size"] = config_model.batch_size
-    if data_dict.get("augmentation") is not None:
-        data_dict["augmentation"] = data_dict["augmentation"]
-    data_config = _build_dataclass(DataModuleConfig, data_dict)
+    dataset_configs = []
+    for ds in config_model.data.datasets:
+        dataset_configs.append(DatasetConfig(
+            name=ds.name,
+            data_dir=ds.data_dir,
+            weight=ds.weight,
+            enabled=ds.enabled,
+        ))
+
+    if not dataset_configs:
+        dataset_configs = [DatasetConfig(name="fer2013", data_dir="fer2013", weight=1.0, enabled=True)]
+
+    aug_config = None
+    if config_model.data.augmentation is not None:
+        aug = config_model.data.augmentation
+        aug_config = AugmentationConfig(
+            horizontal_flip_prob=aug.horizontal_flip_prob,
+            rotation_degrees=aug.rotation_degrees,
+            scale_range=aug.scale_range,
+            brightness_range=aug.brightness_range,
+            contrast_range=aug.contrast_range,
+            gaussian_blur_prob=aug.gaussian_blur_prob,
+            gaussian_blur_sigma=aug.gaussian_blur_sigma,
+            mixup_alpha=aug.mixup_alpha,
+            cutmix_alpha=aug.cutmix_alpha,
+            cutmix_prob=aug.cutmix_prob,
+            enabled=aug.enabled,
+        )
+    else:
+        aug_config = AugmentationConfig()
+
+    data_config = DataModuleConfig(
+        data_dir=Path(config_model.data.data_dir),
+        datasets=dataset_configs,
+        batch_size=config_model.batch_size,
+        val_ratio=config_model.data.val_ratio,
+        seed=training_seed,
+        drop_last=config_model.data.drop_last,
+        mean=config_model.data.mean,
+        std=config_model.data.std,
+        augment=config_model.data.augment,
+        augmentation=aug_config,
+        stats_cache_path=config_model.data.stats_cache_path,
+    )
 
     training_config = TrainingConfig(
         data=data_config,
@@ -319,23 +257,16 @@ def resolve_configs(args: argparse.Namespace) -> TrainingConfig:
         resume_checkpoint=config_model.resume_checkpoint,
     )
 
-    data_config.batch_size = training_config.batch_size
     return training_config
 
 
 def prepare_environment(seed: int) -> None:
-    """Seed Python, NumPy, and JAX random number generators.
-
-    Args:
-        seed: Seed value used for deterministic behavior.
-    """
     random.seed(seed)
     np.random.seed(seed)
     jax.random.PRNGKey(seed)
 
 
 def to_serializable(obj: object) -> ConfigValue:
-    """Convert complex objects into serialization-friendly structures."""
     if isinstance(obj, Path):
         return str(obj)
     if isinstance(obj, (np.floating, np.integer, jnp.generic)):
@@ -350,9 +281,7 @@ def to_serializable(obj: object) -> ConfigValue:
             field.name: getattr(obj, field.name)
             for field in dataclasses.fields(obj)
         }
-        return cast(
-            ConfigValue, {k: to_serializable(v) for k, v in field_values.items()}
-        )
+        return cast(ConfigValue, {k: to_serializable(v) for k, v in field_values.items()})
     if isinstance(obj, Mapping):
         return cast(ConfigValue, {k: to_serializable(v) for k, v in obj.items()})
     if isinstance(obj, Sequence) and not isinstance(obj, (str, bytes)):
@@ -361,7 +290,6 @@ def to_serializable(obj: object) -> ConfigValue:
 
 
 def prune_nones(obj: ConfigValue) -> ConfigValue:
-    """Recursively remove ``None`` entries from mappings and sequences."""
     if obj is None:
         return None
     if isinstance(obj, Mapping):
@@ -384,49 +312,23 @@ def prune_nones(obj: ConfigValue) -> ConfigValue:
 def persist_artifacts(
     output_dir: Path, config: TrainingConfig, metrics: Mapping[str, ConfigValue]
 ) -> None:
-    """Write resolved configuration and metrics to disk.
-
-    Args:
-        output_dir: Directory where artifacts are stored.
-        config: Resolved training configuration to persist.
-        metrics: Dictionary of run metrics to write.
-    """
     output_dir.mkdir(parents=True, exist_ok=True)
     config_path = output_dir / "config_resolved.toml"
     metrics_path = output_dir / "metrics.toml"
-    config_payload = prune_nones(
-        cast(Mapping[str, ConfigValue], to_serializable(config))
-    )
-    metrics_payload = prune_nones(
-        cast(Mapping[str, ConfigValue], to_serializable(dict(metrics)))
-    )
+    config_payload = prune_nones(cast(Mapping[str, ConfigValue], to_serializable(config)))
+    metrics_payload = prune_nones(cast(Mapping[str, ConfigValue], to_serializable(dict(metrics))))
     config_path.write_text(tomli_w.dumps(config_payload), encoding="utf-8")
     metrics_path.write_text(tomli_w.dumps(metrics_payload), encoding="utf-8")
 
 
 def summarize(metrics: SummaryMetrics) -> str:
-    """Create a human-readable summary of key metrics."""
-
-    def _metric_value(
-        value: Union[int, float, None, str, Mapping[str, Sequence[float]]],
-    ) -> float:
-        if (
-            isinstance(value, Mapping)
-            or value is None
-            or isinstance(value, str)
-        ):
+    def _metric_value(value):
+        if isinstance(value, Mapping) or value is None or isinstance(value, str):
             return float("nan")
         return float(value)
 
-    def _maybe_format(
-        label: str,
-        value: Union[int, float, None, str, Mapping[str, Sequence[float]]],
-    ) -> Optional[str]:
-        if (
-            isinstance(value, Mapping)
-            or value is None
-            or isinstance(value, str)
-        ):
+    def _maybe_format(label, value):
+        if isinstance(value, Mapping) or value is None or isinstance(value, str):
             return None
         numeric = float(value)
         if math.isnan(numeric):
@@ -442,9 +344,7 @@ def summarize(metrics: SummaryMetrics) -> str:
     val_f1_line = _maybe_format("Final val F1", metrics.get("val_f1"))
     if val_f1_line is not None:
         summary_lines.append(val_f1_line)
-    val_macro_f1_line = _maybe_format(
-        "Final val macro F1", metrics.get("val_macro_f1")
-    )
+    val_macro_f1_line = _maybe_format("Final val macro F1", metrics.get("val_macro_f1"))
     if val_macro_f1_line is not None:
         summary_lines.append(val_macro_f1_line)
     test_acc = metrics.get("test_accuracy")
@@ -453,15 +353,11 @@ def summarize(metrics: SummaryMetrics) -> str:
     test_f1_line = _maybe_format("Test F1", metrics.get("test_f1"))
     if test_f1_line is not None:
         summary_lines.append(test_f1_line)
-    test_macro_f1_line = _maybe_format(
-        "Test macro F1", metrics.get("test_macro_f1")
-    )
+    test_macro_f1_line = _maybe_format("Test macro F1", metrics.get("test_macro_f1"))
     if test_macro_f1_line is not None:
         summary_lines.append(test_macro_f1_line)
     best_epoch = metrics.get("best_epoch")
-    if isinstance(best_epoch, (int, float)) and not math.isnan(
-        float(best_epoch)
-    ):
+    if isinstance(best_epoch, (int, float)) and not math.isnan(float(best_epoch)):
         summary_lines.append(f"Best epoch:            {int(best_epoch)}")
     best_ckpt = metrics.get("best_checkpoint")
     if isinstance(best_ckpt, str) and best_ckpt:
@@ -470,7 +366,6 @@ def summarize(metrics: SummaryMetrics) -> str:
 
 
 def main() -> None:
-    """CLI entrypoint for training and evaluation."""
     args = parse_args()
     training_config = resolve_configs(args)
     prepare_environment(training_config.seed)
@@ -480,5 +375,5 @@ def main() -> None:
     print(f"Artifacts stored in {training_config.output_dir}")
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     main()

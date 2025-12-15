@@ -1,0 +1,71 @@
+==========================================
+Job started: Fri Nov 21 11:51:53 EST 2025
+Job ID: 48336071
+Node: gpu028
+==========================================
+
+InsightFace cache (host): /scratch/vss54/.insightface
+
+Using cached container
+
+Starting container...
+
+=== Environment Setup ===
+✓ Headless mode enabled
+
+INSIGHTFACE_HOME (inside): /scratch/vss54/.insightface
+
+=== Installing uv ===
+no checksums to verify
+installing to /home/vss54/.local/bin
+  uv
+  uvx
+everything's installed!
+✓ uv uv 0.9.11
+
+=== Setting Python 3.12 ===
+Pinned `.python-version` to `3.12`
+✓ Python 3.12.3
+
+=== Syncing Dependencies ===
+✓ Base dependencies installed
+
+=== Installing InsightFace Stack ===
+✓ InsightFace stack installed
+
+=== Verification ===
+Python: 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+✓ OpenCV: 4.12.0
+✓ ONNX Runtime: 1.23.2
+  Providers: ['TensorrtExecutionProvider', 'CUDAExecutionProvider']
+✓ InsightFace: 0.7.3
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+model ignore: /home/vss54/.insightface/models/buffalo_l/1k3d68.onnx landmark_3d_68
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+model ignore: /home/vss54/.insightface/models/buffalo_l/2d106det.onnx landmark_2d_106
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+find model: /home/vss54/.insightface/models/buffalo_l/det_10g.onnx detection [1, 3, '?', '?'] 127.5 128.0
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+model ignore: /home/vss54/.insightface/models/buffalo_l/genderage.onnx genderage
+Applied providers: ['CPUExecutionProvider'], with options: {'CPUExecutionProvider': {}}
+model ignore: /home/vss54/.insightface/models/buffalo_l/w600k_r50.onnx recognition
+✓ FaceAnalysis initialized
+✓ JAX devices: [CudaDevice(id=0), CudaDevice(id=1)]
+
+✓ All checks passed!
+
+=== GPU Status ===
+NVIDIA A100-PCIE-40GB, 40960 MiB, 40339 MiB
+NVIDIA A100-PCIE-40GB, 40960 MiB, 40339 MiB
+NVIDIA A100-PCIE-40GB, 40960 MiB, 40339 MiB
+NVIDIA A100-PCIE-40GB, 40960 MiB, 40339 MiB
+
+==========================================
+Starting Training
+==========================================
+
+
+==========================================
+Job finished: Fri Nov 21 11:55:18 EST 2025
+Exit code: 1
+==========================================

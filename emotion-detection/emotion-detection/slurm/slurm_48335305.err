@@ -1,0 +1,30 @@
+INFO:    underlay of /usr/bin/nvidia-smi required more than 50 (479) bind mounts
+15:4: not a valid test operator:  
+15:4: not a valid test operator: 13.0
+21:4: not a valid test operator: (
+21:4: not a valid test operator: 535.154.05
+downloading uv 0.9.11 x86_64-unknown-linux-gnu
+Resolved 1 package in 11ms
+Uninstalled 1 package in 109ms
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 1 package in 349ms
+ - opencv-python-headless==4.12.0.88
+ + opencv-python-headless==4.10.0.84
+Resolved 116 packages in 4ms
+Uninstalled 1 package in 107ms
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 1 package in 386ms
+ - opencv-python-headless==4.10.0.84
+ + opencv-python-headless==4.12.0.88
+  × No solution found when resolving dependencies:
+  ╰─▶ Because onnxruntime-gpu==1.16.0 has no wheels with a matching Python
+      ABI tag (e.g., `cp313`) and you require onnxruntime-gpu==1.16.0, we can
+      conclude that your requirements are unsatisfiable.
+
+      hint: You require CPython 3.13 (`cp313`), but we only found wheels for
+      `onnxruntime-gpu` (v1.16.0) with the following Python ABI tags: `cp38`,
+      `cp39`, `cp310`, `cp311`

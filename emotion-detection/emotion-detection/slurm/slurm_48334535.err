@@ -1,0 +1,24 @@
+INFO:    underlay of /usr/bin/nvidia-smi required more than 50 (479) bind mounts
+15:4: not a valid test operator:  
+15:4: not a valid test operator: 13.0
+21:4: not a valid test operator: (
+21:4: not a valid test operator: 535.154.05
+downloading uv 0.9.11 x86_64-unknown-linux-gnu
+  × No solution found when resolving dependencies for split (markers:
+  │ python_full_version >= '3.10' and platform_machine == 'arm64' and
+  │ sys_platform == 'darwin'):
+  ╰─▶ Because tensorflow==2.5.0 has no wheels with a matching Python version
+      tag (e.g., `cp313`) and retinaface>=1.1.0 depends on tensorflow==2.5.0,
+      we can conclude that retinaface>=1.1.0 cannot be used.
+      And because only the following versions of retinaface are available:
+          retinaface<0.0.15
+          retinaface==1.1.0
+          retinaface==1.1.1
+      and your project depends on retinaface>=0.0.15, we can conclude that
+      your project's requirements are unsatisfiable.
+
+      hint: Wheels are available for `tensorflow` (v2.5.0) with the following
+      Python ABI tags: `cp36m`, `cp37m`, `cp38`, `cp39`
+
+      hint: The resolution failed for an environment that is not the current
+      one, consider limiting the environments with `tool.uv.environments`.

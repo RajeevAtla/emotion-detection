@@ -1,0 +1,39 @@
+# IMPROVED CONFIG - Strong regularization to combat overfitting
+# Previous run: Train 94% → Val 65% → Test 29% (severe overfitting)
+
+[training]
+output_dir = "runs"
+model_depth = 18                   # SMALLER MODEL - ResNet-18 instead of 34
+width_multiplier = 1
+dropout_rate = 0.5                 # INCREASED from 0.1 to 0.5
+num_epochs = 60                   # More epochs (early stopping will kick in)
+batch_size = 64
+learning_rate = 0.0003             # REDUCED from 0.001 (slower learning)
+min_learning_rate = 0.000001
+warmup_epochs = 10                 # INCREASED warmup
+weight_decay = 0.01                # INCREASED from 0.0001 (10x stronger L2)
+gradient_accumulation_steps = 2
+label_smoothing = 0.2              # INCREASED from 0.1 (more smoothing)
+log_every = 50
+log_to_console = true
+checkpoint_every = 5
+max_checkpoints = 5
+use_mixed_precision = true
+patience = 25                      # INCREASED patience
+experiment_name = "regularized-v1"
+
+[training.data]
+data_dir = "data_processed_my-experiment"
+batch_size = 64
+val_ratio = 0.15                   # INCREASED val split for better validation signal
+augment = true
+
+[training.data.augmentation]
+horizontal_flip_prob = 0.5
+rotation_degrees = 20.0            # INCREASED from 15
+scale_range = [0.8, 1.2]           # WIDER range for more variation
+elastic_blur_sigma = 1.0           # ADDED blur augmentation
+enabled = true
+
+[training.data.insightface]
+enabled = false

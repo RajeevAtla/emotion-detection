@@ -212,3 +212,13 @@ __marimo__/
 
 # checkpoint files
 runs/*/checkpoints/
+
+# slurm
+slurm/*
+
+# extra data
+data_processed_my-experiment/
+data/
+runs/20251211-080813-efficientnet-20251211/
+runs/20251211-081843-efficientnet-20251211/
+runs/20251211-084029-efficientnet-20251211/

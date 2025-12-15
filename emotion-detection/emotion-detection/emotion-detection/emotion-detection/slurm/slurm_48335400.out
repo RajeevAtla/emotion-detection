@@ -1,0 +1,40 @@
+==========================================
+Job started at: Fri Nov 21 11:20:41 EST 2025
+Job ID: 48335400
+Node: gpu028
+==========================================
+
+Apptainer version:
+apptainer version 1.2.5-1.el7
+
+Current git commit: 
+93323f1a
+
+Using cached JAX container
+
+Starting container execution...
+==========================================
+
+=== STEP 0: Environment Setup ===
+Environment variables set:
+  QT_QPA_PLATFORM=offscreen
+  MPLBACKEND=Agg
+
+=== STEP 1: Installing uv ===
+no checksums to verify
+installing to /home/vss54/.local/bin
+  uv
+  uvx
+everything's installed!
+uv 0.9.11
+
+=== STEP 2: Installing opencv-python-headless ===
+opencv-python-headless installed successfully
+
+=== STEP 3: Syncing base dependencies ===
+ERROR: Failed to sync base dependencies
+
+==========================================
+Container exit code: 1
+Job completed at: Fri Nov 21 11:22:14 EST 2025
+==========================================

@@ -1,0 +1,13 @@
+INFO:    underlay of /usr/bin/nvidia-cuda-mps-control required more than 50 (479) bind mounts
+15:4: not a valid test operator:  
+15:4: not a valid test operator: 13.0
+21:4: not a valid test operator: (
+21:4: not a valid test operator: 535.154.05
+downloading uv 0.9.10 x86_64-unknown-linux-gnu
+Resolved 75 packages in 32ms
+Audited 73 packages in 832ms
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    jax.devices()
+    ^^^
+NameError: name 'jax' is not defined. Did you mean: 'max'?

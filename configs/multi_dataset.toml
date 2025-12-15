@@ -1,0 +1,63 @@
+[training]
+output_dir = "runs"
+model_depth = 34
+width_multiplier = 1
+dropout_rate = 0.3
+
+num_epochs = 60
+batch_size = 64
+learning_rate = 0.001
+min_learning_rate = 0.000001
+warmup_epochs = 5
+weight_decay = 0.01
+label_smoothing = 0.1
+
+use_mixed_precision = true
+gradient_accumulation_steps = 1
+seed = 42
+
+log_every = 50
+checkpoint_every = 5
+max_checkpoints = 5
+patience = 20
+
+experiment_name = "multi-dataset"
+
+[training.data]
+data_dir = "data"
+batch_size = 64
+val_ratio = 0.1
+seed = 42
+drop_last = true
+augment = true
+
+[[training.data.datasets]]
+name = "fer2013"
+data_dir = "fer2013"
+weight = 0.5
+enabled = true
+
+[[training.data.datasets]]
+name = "ckplus"
+data_dir = "ckplus"
+weight = 0.15
+enabled = true
+
+[[training.data.datasets]]
+name = "rafdb"
+data_dir = "rafdb"
+weight = 0.35
+enabled = true
+
+[training.data.augmentation]
+enabled = true
+horizontal_flip_prob = 0.5
+rotation_degrees = 15.0
+scale_range = [0.9, 1.1]
+brightness_range = [0.8, 1.2]
+contrast_range = [0.8, 1.2]
+gaussian_blur_prob = 0.1
+gaussian_blur_sigma = 1.0
+mixup_alpha = 0.2
+cutmix_alpha = 1.0
+cutmix_prob = 0.5

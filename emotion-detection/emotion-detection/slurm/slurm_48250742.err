@@ -1,0 +1,4 @@
+Usage:
+  singularity [global options...] exec [exec options...] <container> <command>
+
+srun: error: gpu017: task 0: Exited with exit code 1

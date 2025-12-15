@@ -1,0 +1,67 @@
+Wed Nov 19 00:00:38 2025       
++---------------------------------------------------------------------------------------+
+| NVIDIA-SMI 535.154.05             Driver Version: 535.154.05   CUDA Version: 12.2     |
+|-----------------------------------------+----------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |         Memory-Usage | GPU-Util  Compute M. |
+|                                         |                      |               MIG M. |
+|=========================================+======================+======================|
+|   0  NVIDIA A100-PCIE-40GB          On  | 00000000:06:00.0 Off |                    0 |
+| N/A   31C    P0              31W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+|   1  NVIDIA A100-PCIE-40GB          On  | 00000000:2F:00.0 Off |                    0 |
+| N/A   31C    P0              31W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+|   2  NVIDIA A100-PCIE-40GB          On  | 00000000:86:00.0 Off |                    0 |
+| N/A   31C    P0              32W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+|   3  NVIDIA A100-PCIE-40GB          On  | 00000000:D8:00.0 Off |                    0 |
+| N/A   30C    P0              31W / 250W |      0MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
++-----------------------------------------+----------------------+----------------------+
+                                                                                         
++---------------------------------------------------------------------------------------+
+| Processes:                                                                            |
+|  GPU   GI   CI        PID   Type   Process name                            GPU Memory |
+|        ID   ID                                                             Usage      |
+|=======================================================================================|
+|  No running processes found                                                           |
++---------------------------------------------------------------------------------------+
+apptainer version 1.2.5-1.el7
+Current git commit: 
+bc6cc13c
+Using cached apptainer image
+.
+..
+.git
+.github
+.gitignore
+.venv
+LICENSE
+README.md
+configs
+data
+gpu_run.sbatch
+jax_25.10-py3.sif
+pyproject.toml
+runs
+scripts
+slurm
+src
+tests
+uv.lock
+Python 3.12.3
+/usr/bin/python
+pip 23.3.1 from /opt/pip/src/pip (python 3.12)
+Requirement already satisfied: pip in /usr/local/lib/python3.12/dist-packages (23.3.1)
+Collecting pip
+  Downloading pip-25.3-py3-none-any.whl.metadata (4.7 kB)
+Collecting uv
+  Using cached uv-0.9.10-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (11 kB)
+Downloading pip-25.3-py3-none-any.whl (1.8 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 8.2 MB/s eta 0:00:00
+Using cached uv-0.9.10-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (21.4 MB)
+Installing collected packages: uv, pip
